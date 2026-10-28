@@ -5,6 +5,7 @@ import { useFamily, useOnline, type FamilyData } from './lib/useFamily';
 import { calculateHouseholdBalance, splitEqual } from './lib/balance';
 import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
 import { CATS, type Bill, type Budget, type Expense, type HistoryMonth, type Item, type Member } from './lib/types';
+import { useExtra, Savings, Upcoming, CloseMonth, Money, type Extra } from './Plan';
 import { averages, byStore, currentPace, costByCategory, fixedVsVariable, monthly, savingTips, ymLabel } from './lib/history';
 import { THEMES, type ThemeId } from './themes';
 import { crossings, usage } from './lib/budget';
@@ -25,11 +26,12 @@ const msg = (e: unknown) => {
 };
 
 function useTheme() {
-  const [theme, setTheme] = useState<ThemeId>(() => { const t = localStorage.getItem('fs-theme') as ThemeId; return THEMES.some((x) => x.id === t) ? t : 'tokyo-night'; });
+  const [theme, setTheme] = useState<ThemeId>(() => { const t = localStorage.getItem('fs-theme2') as ThemeId; return THEMES.some((x) => x.id === t) ? t : 'auto'; });
   useEffect(() => {
-    const t = THEMES.find((x) => x.id === theme)!;
-    document.documentElement.dataset.theme = theme; localStorage.setItem('fs-theme', theme);
-    document.querySelector('meta[name=theme-color]')?.setAttribute('content', t.bg);
+    const mq = matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => { const t = THEMES.find((x) => x.id === theme)!; const bg = theme === 'auto' ? (mq.matches ? '#000000' : '#f2f2f7') : t.bg;
+      document.documentElement.dataset.theme = theme; document.querySelector('meta[name=theme-color]')?.setAttribute('content', bg); };
+    localStorage.setItem('fs-theme2', theme); apply(); mq.addEventListener('change', apply); return () => mq.removeEventListener('change', apply);
   }, [theme]);
   return [theme, setTheme] as const;
 }
@@ -48,7 +50,7 @@ export default function App() {
   return (
     <div className="wrap">
       <header className="top">
-        <h1><span className="acc">~/</span>família</h1>
+        <h1>Família</h1>
         <span className={'dot ' + (online ? 'ok' : 'bad')} role="status">{online ? '● online' : '○ offline'}</span>
       </header>
       {!online && <div className="banner bad" role="alert">offline · a ver dados guardados; o que registares fica por sincronizar</div>}
@@ -127,6 +129,8 @@ function Onboarding({ online, done }: { online: boolean; done: () => void }) {
 function Main({ session, online, theme, setTheme }: { session: Session; online: boolean; theme: ThemeId; setTheme: (t: ThemeId) => void }) {
   const { data, state, queue, status, error, syncedAt, live, syncing, refetch, mutate: qMutate, retry, discard } = useFamily(session);
   const [tab, setTab] = useState<Tab>('inicio');
+  const extra = useExtra(data.family?.id);
+  useEffect(() => { if (syncedAt) extra.reload(); }, [syncedAt]); // eslint-disable-line
   const mainRef = useRef<HTMLElement>(null);
   const [swipeDir, setSwipeDir] = useState('');
   const tabRef = useRef(tab); tabRef.current = tab;
@@ -148,7 +152,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
     el.addEventListener('touchstart', start, { passive: true }); el.addEventListener('touchend', end, { passive: true });
     return () => { el.removeEventListener('touchstart', start); el.removeEventListener('touchend', end); };
   }, []);
-  const [panel, setPanel] = useState<'' | 'despesa' | 'saldar'>('');
+  const [panel, setPanel] = useState<'' | 'despesa' | 'saldar' | 'fechar'>('');
   const [editing, setEditing] = useState<Expense | null>(null);
   const [toast, setToast] = useState<Toast>(null);
   const [locked, unlocked] = useLock();
@@ -190,7 +194,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
       <button onClick={refetch}>Tentar de novo</button> <button onClick={() => supabase.auth.signOut()}>Sair</button></div>);
   if (!data.me || !data.family) return <><Onboarding online={online} done={refetch} /><button onClick={() => supabase.auth.signOut()}>Sair</button></>;
 
-  const ctx = { data, run, mutate, state, online, setToast };
+  const ctx = { data, run, mutate, state, online, setToast, extra };
   const openExpense = (e: Expense | null) => { setEditing(e); setPanel('despesa'); };
   return (
     <>
@@ -211,7 +215,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
         {tab === 'inicio' && <Home {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} goShop={() => setTab('compras')} />}
         {tab === 'despesas' && <Expenses {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} />}
         {tab === 'compras' && <Shopping {...ctx} />}
-        {tab === 'historico' && <History data={data} refetch={refetch} online={online} />}
+        {tab === 'historico' && <History data={data} refetch={refetch} online={online} extra={extra} />}
         {tab === 'contas' && <Bills {...ctx} />}
         {tab === 'defs' && <Settings {...ctx} theme={theme} setTheme={setTheme} />}
       </main>
@@ -224,13 +228,13 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
 }
 
 type Mutate = (label: string, table: Table, kind: Op['kind'], id: string, row?: Record<string, unknown>) => Promise<boolean>;
-type Ctx = { data: FamilyData; run: (l: string, f: () => PromiseLike<{ error: unknown }>) => Promise<boolean>; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; online: boolean; setToast: (t: Toast) => void };
+type Ctx = { data: FamilyData; run: (l: string, f: () => PromiseLike<{ error: unknown }>) => Promise<boolean>; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; online: boolean; setToast: (t: Toast) => void; extra: Extra };
 const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras', recurring_bills: 'Conta', budgets: 'Limite' };
 const describeOp = (o: Op) => `${OPN[o.table]}: ${o.kind === 'create' ? 'novo' : o.kind === 'delete' ? 'apagar' : 'alterar'}${o.row.description ? ' «' + o.row.description + '»' : o.row.name ? ' «' + o.row.name + '»' : ''}`;
 function Mark({ s }: { s?: 'pending' | 'failed' }) {
   return s ? <span className={'tag ' + (s === 'failed' ? 'err' : 'warn')}>{s === 'failed' ? 'Falhou' : 'Por sincronizar'}</span> : null;
 }
-type PanelProps = { panel: '' | 'despesa' | 'saldar'; setPanel: (p: '' | 'despesa' | 'saldar') => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
+type PanelProps = { panel: '' | 'despesa' | 'saldar' | 'fechar'; setPanel: (p: '' | 'despesa' | 'saldar' | 'fechar') => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
 
 const nameOf = (ms: Member[], id: string) => ms.find((m) => m.id === id)?.display_name ?? '?';
 function useBalance(d: FamilyData) {
@@ -241,7 +245,7 @@ function BalanceCard({ data, state }: { data: FamilyData; state: Ctx['state'] })
   const b = useBalance(data);
   return (
     <div className="card balance" aria-live="polite">
-      <div className="big num">{eur(b.debt?.cents ?? 0)}</div>
+      <div><Money c={b.debt?.cents ?? 0} className="big" /></div>
       <div className="dim">{b.debt ? `${nameOf(data.members, b.debt.from)} → ${nameOf(data.members, b.debt.to)}` : 'contas certas'}</div>
       {[...data.expenses, ...data.settlements].some((r) => state[r.id]) && <div className="warn small">inclui alterações por sincronizar</div>}
       {data.members.length < 2 && <div className="warn small">falta a segunda pessoa · código em ⚙</div>}
@@ -376,8 +380,9 @@ function Home(p: Ctx & PanelProps & { goShop: () => void }) {
       <BalanceCard data={data} state={p.state} />
       <Limits data={data} />
       {!panel && <button className="pri wide" onClick={() => p.openExpense(null)}>+ despesa</button>}
-      {!panel && <div className="row links"><button className="link" onClick={() => setPanel('saldar')}>saldar conta</button><button className="link" onClick={p.goShop}>compras · {pending}</button></div>}
+      {!panel && <div className="row links"><button className="link" onClick={() => setPanel('fechar')}>fechar mês</button><button className="link" onClick={() => setPanel('saldar')}>saldar</button><button className="link" onClick={p.goShop}>compras · {pending}</button></div>}
       {panel === 'despesa' && <ExpenseForm {...p} close={() => setPanel('')} />}
+      {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={p.mutate as never} online={p.online} close={() => setPanel('')} />}
       {panel === 'saldar' && <SettleForm {...p} close={() => setPanel('')} />}
       <h3>últimas</h3>
       {recent.length ? <ul className="list">{recent.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} />)}</ul> : <p className="dim">Ainda não há despesas.</p>}
@@ -546,7 +551,7 @@ function Screen() {
     {ios && mode === 'standalone' && <li className="li dim small">no iPhone isto já é o máximo: a barra de estado fica por cima da app.</li>}
   </ul></>);
 }
-function Settings({ data, online, theme, setTheme, mutate, run, state, setToast }: Ctx & { theme: ThemeId; setTheme: (t: ThemeId) => void }) {
+function Settings({ data, online, theme, setTheme, mutate, run, state, setToast, extra }: Ctx & { theme: ThemeId; setTheme: (t: ThemeId) => void }) {
   const [copied, setCopied] = useState(false);
   const code = data.family!.invite_code;
   const copy = async () => { try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* sem permissão: o código fica visível */ } };
@@ -558,7 +563,7 @@ function Settings({ data, online, theme, setTheme, mutate, run, state, setToast 
           <span className="sw" style={{ background: t.bg, boxShadow: `inset -10px 0 0 ${t.acc}` }} /><span className="grow">{t.name}</span>{theme === t.id && <span className="acc">●</span>}</button></li>))}</ul>
       <Lock />
       <Screen />
-      <LimitsEdit data={data} mutate={mutate} run={run} state={state} online={online} setToast={setToast} />
+      <LimitsEdit data={data} mutate={mutate} run={run} state={state} online={online} setToast={setToast} extra={extra} />
       <h3>família</h3>
       <ul className="list">{data.members.map((m) => <li key={m.id} className="li"><span className="grow">{m.display_name}</span>{m.id === data.me!.id && <span className="dim">tu</span>}</li>)}
         <li className="li"><span className="grow dim">convite</span><span className="num acc">{code}</span><button className="link" onClick={copy}>{copied ? 'copiado' : 'copiar'}</button></li></ul>
@@ -579,7 +584,7 @@ function Bars({ items, avg, height = 120 }: { items: { label: string; v: number;
   );
 }
 
-function History({ data, refetch, online }: { data: FamilyData; refetch: () => void; online: boolean }) {
+function History({ data, refetch, online, extra }: { data: FamilyData; refetch: () => void; online: boolean; extra: Extra }) {
   const [busy, setBusy] = useState(false);
   const setOpenMonth = async (ym: string, op: boolean) => {
     if (!confirm(op ? `Reabrir ${ymLabel(ym)}? Fica em aberto (provisório).` : `Fechar ${ymLabel(ym)}?`)) return;
@@ -611,6 +616,7 @@ function History({ data, refetch, online }: { data: FamilyData; refetch: () => v
       </div>}
       <Bars height={70} items={last.map((m) => ({ label: ymLabel(m.ym), v: m.total_cents, dim: m.provisional }))} avg={a?.total} />
       <div className="axis dim small"><span>{ymLabel(last[0].ym)}</span><span>┄ média</span><span>{ymLabel(last[last.length - 1].ym)}</span></div>
+      <Savings data={data} extra={extra} online={online} spent={pace.total.spent} projected={pace.total.proj} />
       <h3>este mês · {ymLabel(pace.ym)} · dia {pace.day}/{pace.dim} · vs média {n}m</h3>
       <p className={pace.total.flag ? 'bad' : ''}><span className="big num">{eur(pace.total.spent)}</span> <span className="dim">até hoje → ritmo </span><span className="num">{eur(pace.total.proj)}</span>{pace.total.avg != null && <span className="dim"> · normal {eur(pace.total.avg)} · </span>}{pace.total.ratio != null && <span className={pace.total.ratio > 1.2 ? 'bad' : pace.total.ratio > 1 ? 'warn' : 'ok'}>{Math.round(pace.total.ratio * 100)}%</span>}</p>
       {pace.cats.length > 0 ? <table className="t"><tbody>{pace.cats.map((c) => <tr key={c.cat} className={c.flag ? 'bad' : ''}>
@@ -649,7 +655,7 @@ function History({ data, refetch, online }: { data: FamilyData; refetch: () => v
 }
 
 const PER: Record<Bill['period'], string> = { mensal: '/mês', bimestral: '/2 meses', trimestral: '/3 meses', anual: '/ano', 'variável': '/mês' };
-function Bills({ data, mutate, state }: Ctx) {
+function Bills({ data, mutate, state, extra, online }: Ctx) {
   const [edit, setEdit] = useState<string | null>(null);
   const [val, setVal] = useState('');
   const [err, setErr] = useState('');
@@ -662,9 +668,12 @@ function Bills({ data, mutate, state }: Ctx) {
     if (val.trim() !== '' && c === null) return setErr('valor inválido (ex.: 12,50)');
     if (await mutate('Conta atualizada.', 'recurring_bills', 'patch', b.id, { amount_cents: c, estimate: false })) setEdit(null);
   };
-  if (!bills.length) return <p className="dim">sem contas recorrentes · corre migration_v3.sql e o seed privado no Supabase</p>;
+  const up = <Upcoming data={data} extra={extra} online={online} />;
+  if (!bills.length) return <>{up}<p className="dim">sem contas recorrentes · corre migration_v3.sql e o seed privado no Supabase</p></>;
   return (
     <>
+      {up}
+      <h3>contas da casa</h3>
       <div className="kpi"><div><span className="big num">{eur(total)}</span><span className="dim">/mês</span></div>
         <div className="dim">{unknown ? `${unknown} por registar · ` : ''}≈ = estimativa</div></div>
       <ul className="list">{bills.map((b) => (

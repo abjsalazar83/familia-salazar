@@ -1,7 +1,10 @@
-export type ThemeId = 'tokyo-night' | 'catppuccin' | 'gruvbox' | 'nord' | 'everforest' | 'kanagawa' | 'rose-pine' | 'matte-black' | 'catppuccin-latte';
+export type ThemeId = 'auto' | 'light' | 'dark' | 'tokyo-night' | 'catppuccin' | 'gruvbox' | 'nord' | 'everforest' | 'kanagawa' | 'rose-pine' | 'matte-black' | 'catppuccin-latte';
 export type Theme = { id: ThemeId; name: string; bg: string; acc: string };
 // Cores de fundo/acento usadas no seletor e na barra do sistema. As restantes estão em style.css.
 export const THEMES: Theme[] = [
+  { id: 'auto', name: 'Automático (sistema)', bg: '#f2f2f7', acc: '#007aff' },
+  { id: 'light', name: 'Claro', bg: '#f2f2f7', acc: '#007aff' },
+  { id: 'dark', name: 'Escuro', bg: '#000000', acc: '#0a84ff' },
   { id: 'tokyo-night', name: 'Tokyo Night', bg: '#1a1b26', acc: '#7aa2f7' },
   { id: 'catppuccin', name: 'Catppuccin', bg: '#1e1e2e', acc: '#cba6f7' },
   { id: 'gruvbox', name: 'Gruvbox', bg: '#282828', acc: '#d79921' },
