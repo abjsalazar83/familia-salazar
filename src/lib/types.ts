@@ -1,0 +1,14 @@
+export type Member = { id: string; family_id: string; user_id: string; display_name: string };
+export type Family = { id: string; name: string; invite_code: string };
+export type Expense = {
+  id: string; family_id: string; amount_cents: number; description: string; category: string;
+  paid_by: string; type: 'pessoal' | 'partilhada'; split_mode: '50/50' | 'personalizada';
+  shares: Record<string, number>; date: string; is_deleted: boolean; created_at: string;
+};
+export type Settlement = {
+  id: string; family_id: string; from_member: string; to_member: string; amount_cents: number;
+  date: string; method: string | null; confirmed: boolean; confirmed_at: string | null; is_deleted: boolean; created_at: string;
+};
+export type Item = { id: string; family_id: string; name: string; quantity: string | null; note: string | null; bought: boolean; created_at: string };
+export type Note = { id: string; kind: 'acerto' | 'fixa' | 'referencia'; title: string; value_text: string | null; period: string | null; sort: number };
+export const CATS = ['Supermercado', 'Casa', 'Lazer', 'Saúde', 'Escola', 'Transporte', 'Subscrições', 'Outros'];
