@@ -4,12 +4,13 @@ import { supabase } from './lib/supabase';
 import { useFamily, useOnline, type FamilyData } from './lib/useFamily';
 import { calculateHouseholdBalance, splitEqual } from './lib/balance';
 import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
-import { CATS, type Expense, type Item, type Member } from './lib/types';
-import { SEED_NOTES } from './lib/seed';
+import { CATS, type Bill, type Expense, type HistoryMonth, type Item, type Member } from './lib/types';
+import { averages, monthly, yearly, ymLabel } from './lib/history';
+import { THEMES, type ThemeId } from './themes';
 import { uuid, type Op, type Table } from './lib/outbox';
 import { readStoredSession } from './lib/session';
 
-type Tab = 'inicio' | 'despesas' | 'compras' | 'defs';
+type Tab = 'inicio' | 'despesas' | 'compras' | 'historico' | 'contas' | 'defs';
 type Toast = { kind: 'ok' | 'bad' | 'busy'; text: string } | null;
 const msg = (e: unknown) => {
   const m = (e as { message?: string })?.message || String(e);
@@ -21,10 +22,11 @@ const msg = (e: unknown) => {
 };
 
 function useTheme() {
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('fs-theme') as 'dark' | 'light') || 'dark');
+  const [theme, setTheme] = useState<ThemeId>(() => { const t = localStorage.getItem('fs-theme') as ThemeId; return THEMES.some((x) => x.id === t) ? t : 'tokyo-night'; });
   useEffect(() => {
+    const t = THEMES.find((x) => x.id === theme)!;
     document.documentElement.dataset.theme = theme; localStorage.setItem('fs-theme', theme);
-    document.querySelector('meta[name=theme-color]')?.setAttribute('content', theme === 'dark' ? '#0f1115' : '#f4f4f2');
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content', t.bg);
   }, [theme]);
   return [theme, setTheme] as const;
 }
@@ -43,10 +45,10 @@ export default function App() {
   return (
     <div className="wrap">
       <header className="top">
-        <h1>Família Salazar</h1>
-        <span className={'pill ' + (online ? 'ok' : 'bad')} role="status">{online ? 'online' : 'offline'}</span>
+        <h1><span className="acc">~/</span>família</h1>
+        <span className={'dot ' + (online ? 'ok' : 'bad')} role="status">{online ? '● online' : '○ offline'}</span>
       </header>
-      {!online && <div className="banner bad" role="alert">Sem ligação. Estás a ver os últimos dados guardados neste aparelho. O que registares fica «por sincronizar» e é enviado quando voltar a rede.</div>}
+      {!online && <div className="banner bad" role="alert">offline · a ver dados guardados; o que registares fica por sincronizar</div>}
       {!ready ? <p className="dim">A carregar…</p> : !session ? <Auth online={online} /> : <Main session={session} online={online} theme={theme} setTheme={setTheme} />}
     </div>
   );
@@ -119,7 +121,7 @@ function Onboarding({ online, done }: { online: boolean; done: () => void }) {
   );
 }
 
-function Main({ session, online, theme, setTheme }: { session: Session; online: boolean; theme: string; setTheme: (t: 'dark' | 'light') => void }) {
+function Main({ session, online, theme, setTheme }: { session: Session; online: boolean; theme: ThemeId; setTheme: (t: ThemeId) => void }) {
   const { data, state, queue, status, error, syncedAt, live, syncing, refetch, mutate: qMutate, retry, discard } = useFamily(session);
   const [tab, setTab] = useState<Tab>('inicio');
   const [panel, setPanel] = useState<'' | 'despesa' | 'saldar'>('');
@@ -161,7 +163,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
         {status === 'error' ? <span className="err">Falha a sincronizar: {msg(error)}</span>
           : <>{online ? 'Sincronizado' : 'Última sincronização'} {syncedAt?.toLocaleString('pt-PT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{live && online ? ' · tempo real' : ''}</>}
         {pendingN > 0 && <span className="warn"> · {pendingN} por sincronizar{syncing && online ? ' (a enviar…)' : ''}</span>}
-        {' · '}{data.me.display_name}
+        <button className={'gear' + (tab === 'defs' ? ' on' : '')} aria-label="Definições" onClick={() => { setTab('defs'); setPanel(''); }}>⚙</button>
       </div>
       {toast && <div className={'banner ' + toast.kind} role={toast.kind === 'bad' ? 'alert' : 'status'}>{toast.text}{toast.kind === 'bad' && <button className="x" aria-label="Fechar" onClick={() => setToast(null)}>×</button>}</div>}
       {failed.length > 0 && <div className="card" role="alert"><h2 className="err">Falhou ({failed.length})</h2>
@@ -173,10 +175,12 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
         {tab === 'inicio' && <Home {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} goShop={() => setTab('compras')} />}
         {tab === 'despesas' && <Expenses {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} />}
         {tab === 'compras' && <Shopping {...ctx} />}
+        {tab === 'historico' && <History data={data} />}
+        {tab === 'contas' && <Bills {...ctx} />}
         {tab === 'defs' && <Settings {...ctx} theme={theme} setTheme={setTheme} />}
       </main>
       <nav className="tabs" aria-label="Navegação">
-        {([['inicio', 'Início'], ['despesas', 'Despesas'], ['compras', 'Compras'], ['defs', 'Definições']] as [Tab, string][]).map(([k, l]) => (
+        {([['inicio', 'início'], ['despesas', 'despesas'], ['compras', 'compras'], ['historico', 'histórico'], ['contas', 'contas']] as [Tab, string][]).map(([k, l]) => (
           <button key={k} aria-current={tab === k ? 'page' : undefined} className={tab === k ? 'pri' : ''} onClick={() => { setTab(k); setPanel(''); }}>{l}</button>))}
       </nav>
     </>
@@ -185,7 +189,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
 
 type Mutate = (label: string, table: Table, kind: Op['kind'], id: string, row?: Record<string, unknown>) => Promise<boolean>;
 type Ctx = { data: FamilyData; run: (l: string, f: () => PromiseLike<{ error: unknown }>) => Promise<boolean>; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; online: boolean; setToast: (t: Toast) => void };
-const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras' };
+const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras', recurring_bills: 'Conta' };
 const describeOp = (o: Op) => `${OPN[o.table]}: ${o.kind === 'create' ? 'novo' : o.kind === 'delete' ? 'apagar' : 'alterar'}${o.row.description ? ' «' + o.row.description + '»' : o.row.name ? ' «' + o.row.name + '»' : ''}`;
 function Mark({ s }: { s?: 'pending' | 'failed' }) {
   return s ? <span className={'tag ' + (s === 'failed' ? 'err' : 'warn')}>{s === 'failed' ? 'Falhou' : 'Por sincronizar'}</span> : null;
@@ -201,11 +205,10 @@ function BalanceCard({ data, state }: { data: FamilyData; state: Ctx['state'] })
   const b = useBalance(data);
   return (
     <div className="card balance" aria-live="polite">
-      <div className="dim small">Saldo atual</div>
       <div className="big num">{eur(b.debt?.cents ?? 0)}</div>
-      <div>{b.debt ? `${nameOf(data.members, b.debt.from)} deve ${eur(b.debt.cents)} a ${nameOf(data.members, b.debt.to)}` : 'Contas certas: ninguém deve nada.'}</div>
-      {[...data.expenses, ...data.settlements].some((r) => state[r.id]) && <div className="warn small">Inclui alterações deste aparelho ainda por sincronizar com o servidor.</div>}
-      {data.members.length < 2 && <div className="warn small">Só há uma pessoa na família. Partilha o código de convite (Definições).</div>}
+      <div className="dim">{b.debt ? `${nameOf(data.members, b.debt.from)} → ${nameOf(data.members, b.debt.to)}` : 'contas certas'}</div>
+      {[...data.expenses, ...data.settlements].some((r) => state[r.id]) && <div className="warn small">inclui alterações por sincronizar</div>}
+      {data.members.length < 2 && <div className="warn small">falta a segunda pessoa · código em ⚙</div>}
     </div>
   );
 }
@@ -243,7 +246,7 @@ function ExpenseForm({ data, mutate, editing, close }: Ctx & { editing: Expense 
     setBusy(true); const ok = await mutate('Despesa retirada do saldo.', 'expenses', 'patch', editing.id, { is_deleted: true }); setBusy(false); if (ok) close();
   };
   return (
-    <div className="card">
+    <div className="form">
       <h2>{editing ? 'Editar despesa' : 'Nova despesa'}</h2>
       <Field label="Quanto? (€)"><input className="num" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="0,00" autoFocus={!editing} /></Field>
       <Field label="O quê?"><input value={f.desc} maxLength={200} onChange={(e) => setF({ ...f, desc: e.target.value })} /></Field>
@@ -297,8 +300,8 @@ function SettleForm({ data, mutate, close }: Ctx & { close: () => void }) {
     setBusy(false); if (ok) close();
   };
   return (
-    <div className="card">
-      <h2>Saldar conta</h2>
+    <div className="form">
+      <h2>saldar conta</h2>
       <span className="lab">Quem pagou?</span>
       <div className="seg" role="radiogroup" aria-label="Quem pagou?">{ms.map((m) => <button key={m.id} role="radio" aria-checked={from === m.id} className={from === m.id ? 'pri' : ''} onClick={() => setFrom(m.id)}>{m.display_name}</button>)}</div>
       <p className="dim small">Recebe: {nameOf(ms, to)}</p>
@@ -330,26 +333,21 @@ function Home(p: Ctx & PanelProps & { goShop: () => void }) {
   const { data, panel, setPanel } = p;
   const recent = data.expenses.filter((e) => !e.is_deleted).slice(0, 5);
   const pending = data.items.filter((i) => !i.bought).length;
-  const acertos = data.notes.filter((n) => n.kind === 'acerto');
   return (
     <>
       <BalanceCard data={data} state={p.state} />
-      <div className="row">
-        <button className="pri" onClick={() => p.openExpense(null)}>Adicionar despesa</button>
-        <button onClick={() => setPanel('saldar')}>Saldar conta</button>
-        <button onClick={p.goShop}>Lista de compras ({pending})</button>
-      </div>
+      {!panel && <button className="pri wide" onClick={() => p.openExpense(null)}>+ despesa</button>}
+      {!panel && <div className="row links"><button className="link" onClick={() => setPanel('saldar')}>saldar conta</button><button className="link" onClick={p.goShop}>compras · {pending}</button></div>}
       {panel === 'despesa' && <ExpenseForm {...p} close={() => setPanel('')} />}
       {panel === 'saldar' && <SettleForm {...p} close={() => setPanel('')} />}
-      <h3>Últimas despesas</h3>
-      {recent.length ? <ul className="card list">{recent.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} />)}</ul> : <p className="dim">Ainda não há despesas.</p>}
-      {acertos.length > 0 && <><h3>Histórico importado (não conta no saldo)</h3><Notes notes={acertos} /></>}
+      <h3>últimas</h3>
+      {recent.length ? <ul className="list">{recent.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} />)}</ul> : <p className="dim">Ainda não há despesas.</p>}
     </>
   );
 }
 
 function Notes({ notes }: { notes: FamilyData['notes'] }) {
-  return <ul className="card list">{notes.map((n) => <li key={n.id} className="li"><span className="grow">{n.title}</span><span className="num">{n.value_text}</span></li>)}</ul>;
+  return <ul className="list">{notes.map((n) => <li key={n.id} className="li"><span className="grow">{n.title}</span><span className="num">{n.value_text}</span></li>)}</ul>;
 }
 
 function Expenses(p: Ctx & PanelProps) {
@@ -359,14 +357,13 @@ function Expenses(p: Ctx & PanelProps) {
   const confirmS = (id: string) => mutate('Liquidação confirmada.', 'settlements', 'patch', id, { confirmed: true });
   return (
     <>
-      <BalanceCard data={data} state={p.state} />
-      {panel === 'despesa' ? <ExpenseForm {...p} close={() => setPanel('')} /> : <button className="pri wide" onClick={() => p.openExpense(null)}>Adicionar despesa</button>}
-      <h3>Despesas ({list.length})</h3>
-      {list.length ? <ul className="card list">{list.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} onEdit={() => p.openExpense(e)} />)}</ul> : <p className="dim">Ainda não há despesas.</p>}
-      <label className="check small"><input type="checkbox" checked={showGone} onChange={(e) => setShowGone(e.target.checked)} /> Mostrar despesas retiradas</label>
-      <h3>Liquidações</h3>
-      {panel === 'saldar' ? <SettleForm {...p} close={() => setPanel('')} /> : <button onClick={() => setPanel('saldar')}>Saldar conta</button>}
-      {data.settlements.length > 0 && <ul className="card list">{data.settlements.map((s) => (
+      {panel === 'despesa' ? <ExpenseForm {...p} close={() => setPanel('')} /> : <button className="pri wide" onClick={() => p.openExpense(null)}>+ despesa</button>}
+      <h3>despesas · {list.length}</h3>
+      {list.length ? <ul className="list">{list.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} onEdit={() => p.openExpense(e)} />)}</ul> : <p className="dim">Ainda não há despesas.</p>}
+      <label className="check small dim"><input type="checkbox" checked={showGone} onChange={(e) => setShowGone(e.target.checked)} /> mostrar retiradas</label>
+      <h3>liquidações</h3>
+      {panel === 'saldar' ? <SettleForm {...p} close={() => setPanel('')} /> : <button className="link" onClick={() => setPanel('saldar')}>saldar conta</button>}
+      {data.settlements.length > 0 && <ul className="list">{data.settlements.map((s) => (
         <li key={s.id} className="li">
           <div className="grow"><div>{nameOf(data.members, s.from_member)} → {nameOf(data.members, s.to_member)} <Mark s={p.state[s.id]} /></div>
             <div className="dim small">{ptDate(s.date)}{s.method ? ` · ${s.method}` : ''} · <span className={s.confirmed ? 'okt' : 'warn'}>{s.confirmed ? `confirmada${s.confirmed_at ? ' ' + ptDate(s.confirmed_at) : ''}` : 'por confirmar (não conta)'}</span></div></div>
@@ -393,9 +390,8 @@ function Shopping({ data, mutate, state }: Ctx) {
   const del = (i: Item) => mutate('Item apagado.', 'shopping_items', 'delete', i.id);
   return (
     <>
-      <div className="card">
-        <h2>{f.id ? 'Editar item' : 'Adicionar item'}</h2>
-        <Field label="O que falta?"><input value={f.name} maxLength={120} onKeyDown={(e) => { if (e.key === 'Enter') save(); }} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+      <div className="form">
+        <Field label={f.id ? 'editar item' : 'o que falta?'}><input value={f.name} maxLength={120} onKeyDown={(e) => { if (e.key === 'Enter') save(); }} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <details open={!!(f.qty || f.note)}><summary>Quantidade e nota</summary>
           <Field label="Quantidade"><input value={f.qty} maxLength={40} onChange={(e) => setF({ ...f, qty: e.target.value })} /></Field>
           <Field label="Nota"><input value={f.note} maxLength={200} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
@@ -403,7 +399,7 @@ function Shopping({ data, mutate, state }: Ctx) {
         <div className="row"><button className="pri" onClick={save} disabled={busy || !f.name.trim()}>{busy ? 'A guardar…' : f.id ? 'Guardar item' : 'Adicionar à lista'}</button>
           {f.id && <button onClick={() => setF(blank)}>Cancelar</button>}</div>
       </div>
-      {data.items.length ? <ul className="card list">{data.items.map((i) => (
+      {data.items.length ? <ul className="list">{data.items.map((i) => (
         <li key={i.id} className="li">
           <label className="check grow"><input type="checkbox" checked={i.bought} onChange={() => toggle(i)} />
             <span className={i.bought ? 'gone' : ''}>{i.name}{i.quantity ? ` · ${i.quantity}` : ''}{i.note && <span className="dim small"> — {i.note}</span>}</span> <Mark s={state[i.id]} /></label>
@@ -414,31 +410,102 @@ function Shopping({ data, mutate, state }: Ctx) {
   );
 }
 
-function Settings({ data, run, online, theme, setTheme }: Ctx & { theme: string; setTheme: (t: 'dark' | 'light') => void }) {
+function Settings({ data, online, theme, setTheme }: Ctx & { theme: ThemeId; setTheme: (t: ThemeId) => void }) {
   const [copied, setCopied] = useState(false);
   const code = data.family!.invite_code;
   const copy = async () => { try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* sem permissão: o código fica visível */ } };
-  const importSeed = () => run('Dados iniciais importados como histórico (não contam no saldo).', () =>
-    supabase.from('history_notes').upsert(SEED_NOTES.map((n) => ({ ...n, family_id: data.family!.id })), { onConflict: 'family_id,kind,title', ignoreDuplicates: true }));
-  const fixas = data.notes.filter((n) => n.kind !== 'acerto');
   return (
     <>
-      <div className="card"><h2>Aspeto</h2>
-        <div className="seg" role="radiogroup" aria-label="Tema">
-          <button role="radio" aria-checked={theme === 'dark'} className={theme === 'dark' ? 'pri' : ''} onClick={() => setTheme('dark')}>Escuro</button>
-          <button role="radio" aria-checked={theme === 'light'} className={theme === 'light' ? 'pri' : ''} onClick={() => setTheme('light')}>Claro</button>
-        </div></div>
-      <div className="card"><h2>Família</h2>
-        <ul className="list">{data.members.map((m) => <li key={m.id} className="li"><span className="grow">{m.display_name}</span>{m.id === data.me!.id && <span className="dim small">tu</span>}</li>)}</ul>
-        <p className="dim small">Código de convite para a outra pessoa entrar (só uma vez):</p>
-        <div className="row"><span className="code num">{code}</span><button onClick={copy}>{copied ? 'Copiado' : 'Copiar'}</button></div>
-      </div>
-      <div className="card"><h2>Dados iniciais</h2>
-        <p className="dim small">Acertos de setembro e outubro de 2026, despesas fixas e subscrições da versão anterior. Entram como notas de histórico e não mexem no saldo.</p>
-        <button disabled={!online} onClick={importSeed}>{data.notes.length ? 'Importar de novo (sem duplicar)' : 'Importar dados iniciais'}</button>
-        {fixas.length > 0 && <><h3>Fixas e referências</h3><Notes notes={fixas} /></>}
-      </div>
-      <div className="card"><h2>Sessão</h2><button disabled={!online} onClick={() => supabase.auth.signOut()}>Terminar sessão</button>{!online && <p className="dim small">Para não perderes alterações por sincronizar, terminar sessão só com rede.</p>}</div>
+      <h3>tema</h3>
+      <ul className="list themes" role="radiogroup" aria-label="Tema">{THEMES.map((t) => (
+        <li key={t.id}><button role="radio" aria-checked={theme === t.id} className={'li theme' + (theme === t.id ? ' on' : '')} onClick={() => setTheme(t.id)}>
+          <span className="sw" style={{ background: t.bg, boxShadow: `inset -10px 0 0 ${t.acc}` }} /><span className="grow">{t.name}</span>{theme === t.id && <span className="acc">●</span>}</button></li>))}</ul>
+      <h3>família</h3>
+      <ul className="list">{data.members.map((m) => <li key={m.id} className="li"><span className="grow">{m.display_name}</span>{m.id === data.me!.id && <span className="dim">tu</span>}</li>)}
+        <li className="li"><span className="grow dim">convite</span><span className="num acc">{code}</span><button className="link" onClick={copy}>{copied ? 'copiado' : 'copiar'}</button></li></ul>
+      <h3>sessão</h3>
+      <button className="link" disabled={!online} onClick={() => supabase.auth.signOut()}>terminar sessão</button>{!online && <p className="dim small">só com rede, para não perder o que está por sincronizar</p>}
+    </>
+  );
+}
+
+function Bars({ items, avg, height = 120 }: { items: { label: string; v: number; dim?: boolean }[]; avg?: number; height?: number }) {
+  const max = Math.max(1, ...items.map((i) => i.v), avg ?? 0);
+  const w = 100 / Math.max(1, items.length);
+  return (
+    <svg className="bars" viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" role="img" aria-label="Gráfico de barras">
+      {items.map((i, k) => { const h = (i.v / max) * (height - 4); return <rect key={k} x={k * w + w * 0.15} y={height - h} width={w * 0.7} height={h} className={i.dim ? 'b dimb' : 'b'}><title>{i.label}: {eur(i.v)}</title></rect>; })}
+      {avg != null && <line x1="0" x2="100" y1={height - (avg / max) * (height - 4)} y2={height - (avg / max) * (height - 4)} className="avg" />}
+    </svg>
+  );
+}
+
+function History({ data }: { data: FamilyData }) {
+  const ms = data.months;
+  const [n, setN] = useState(12);
+  const [open, setOpen] = useState<string | null>(null);
+  const a = useMemo(() => averages(ms, n), [ms, n]);
+  const ys = useMemo(() => yearly(ms), [ms]);
+  const acertos = data.notes.filter((x) => x.kind === 'acerto');
+  if (!ms.length) return <p className="dim">sem histórico ainda · corre migration_v3.sql e o seed privado no Supabase</p>;
+  const last = [...ms].sort((x, y) => x.ym.localeCompare(y.ym)).slice(-n);
+  return (
+    <>
+      <div className="seg" role="radiogroup" aria-label="Período">{[12, 24, 60].map((k) => <button key={k} role="radio" aria-checked={n === k} className={n === k ? 'pri' : ''} onClick={() => setN(k)}>{k}m</button>)}</div>
+      {a && <div className="kpi">
+        <div><span className="big num">{eur(a.total)}</span><span className="dim">/mês</span></div>
+        <div className="dim">{eur(a.noExtra)} sem extraordinários · {ymLabel(a.from)}–{ymLabel(a.to)}</div>
+      </div>}
+      <Bars items={last.map((m) => ({ label: ymLabel(m.ym) + (m.provisional ? ' (provisório)' : ''), v: m.total_cents, dim: m.provisional }))} avg={a?.total} />
+      <div className="axis dim small"><span>{ymLabel(last[0].ym)}</span><span>— média</span><span>{ymLabel(last[last.length - 1].ym)}</span></div>
+      {a && <><h3>por categoria · média/mês</h3>
+        <ul className="list hbars">{a.byCat.filter(([, v]) => v > 0).map(([c, v]) => <li key={c} className="li"><span className="grow">{c}<i style={{ width: (v / a.byCat[0][1]) * 100 + '%' }} /></span><span className="num">{eur(v)}</span></li>)}</ul></>}
+      <h3>por ano · média/mês</h3>
+      <Bars height={70} items={ys.map((y) => ({ label: y.year, v: y.avg }))} />
+      <div className="axis dim small">{ys.map((y) => <span key={y.year}>{y.year.slice(2)}</span>)}</div>
+      {acertos.length > 0 && <><h3>acertos</h3><Notes notes={acertos} /></>}
+      <h3>meses</h3>
+      <ul className="list">{[...ms].sort((x, y) => y.ym.localeCompare(x.ym)).map((m: HistoryMonth) => (
+        <li key={m.ym} className="li col"><button className="row-btn" aria-expanded={open === m.ym} onClick={() => setOpen(open === m.ym ? null : m.ym)}>
+          <span className="grow">{ymLabel(m.ym)}{m.provisional && <span className="warn"> · provisório</span>}</span>
+          {m.extra_cents > 0 && <span className="dim small">+{eur(m.extra_cents)} extra </span>}<span className="num">{eur(m.total_cents)}</span></button>
+          {open === m.ym && <div className="sub dim small">{Object.entries(m.cats).sort((x, y) => y[1] - x[1]).map(([c, v]) => <div key={c} className="kv"><span>{c}</span><span className="num">{eur(v)}</span></div>)}{m.note && <p>{m.note}</p>}</div>}
+        </li>))}</ul>
+    </>
+  );
+}
+
+const PER: Record<Bill['period'], string> = { mensal: '/mês', bimestral: '/2 meses', trimestral: '/3 meses', anual: '/ano', 'variável': '/mês' };
+function Bills({ data, mutate, state }: Ctx) {
+  const [edit, setEdit] = useState<string | null>(null);
+  const [val, setVal] = useState('');
+  const [err, setErr] = useState('');
+  const bills = data.bills;
+  const total = bills.reduce((s, b) => s + (monthly(b.amount_cents, b.period) ?? 0), 0);
+  const unknown = bills.filter((b) => b.amount_cents == null).length;
+  const save = async (b: Bill) => {
+    setErr('');
+    const c = val.trim() === '' ? null : parseCents(val);
+    if (val.trim() !== '' && c === null) return setErr('valor inválido (ex.: 12,50)');
+    if (await mutate('Conta atualizada.', 'recurring_bills', 'patch', b.id, { amount_cents: c, estimate: false })) setEdit(null);
+  };
+  if (!bills.length) return <p className="dim">sem contas recorrentes · corre migration_v3.sql e o seed privado no Supabase</p>;
+  return (
+    <>
+      <div className="kpi"><div><span className="big num">{eur(total)}</span><span className="dim">/mês</span></div>
+        <div className="dim">{unknown ? `${unknown} por registar · ` : ''}≈ = estimativa</div></div>
+      <ul className="list">{bills.map((b) => (
+        <li key={b.id} className="li col">
+          <button className="row-btn" aria-expanded={edit === b.id} onClick={() => { setEdit(edit === b.id ? null : b.id); setVal(b.amount_cents == null ? '' : centsToInput(b.amount_cents)); setErr(''); }}>
+            <span className="grow">{b.name} <Mark s={state[b.id]} /></span>
+            {b.amount_cents == null ? <span className="warn small">valor por registar</span>
+              : <span className="num">{b.estimate ? '≈ ' : ''}{eur(b.amount_cents)}<span className="dim small">{PER[b.period]}</span></span>}
+          </button>
+          {(b.note || b.payer || b.method) && <div className="sub dim small">{[b.payer, b.method, b.note].filter(Boolean).join(' · ')}</div>}
+          {edit === b.id && <div className="sub row">
+            <input className="num" inputMode="decimal" aria-label={`Valor de ${b.name}`} value={val} onChange={(e) => setVal(e.target.value)} placeholder="0,00" autoFocus />
+            <button className="pri" onClick={() => save(b)}>guardar</button>{err && <span className="err small">{err}</span>}</div>}
+        </li>))}</ul>
     </>
   );
 }
