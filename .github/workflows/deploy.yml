@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  pages: write
 concurrency: { group: pages, cancel-in-progress: true }
 jobs:
   deploy:
@@ -22,3 +23,8 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           publish_branch: gh-pages
+      - name: Ativar GitHub Pages (ramo gh-pages)
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          gh api repos/${{ github.repository }}/pages >/dev/null 2>&1 && echo "Pages já ativo" || \
+          gh api -X POST repos/${{ github.repository }}/pages -f "source[branch]=gh-pages" -f "source[path]=/" || echo "::warning::Não foi possível ativar o Pages automaticamente"
