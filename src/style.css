@@ -74,3 +74,9 @@ details { margin: 8px 0; } summary { color: var(--dim); cursor: pointer; font-si
 .t td:first-child { padding-left: 0; width: 100%; } .t tr:last-child td { border-bottom: 0; }
 .t i { display: block; height: 2px; background: var(--acc); margin-top: 3px; opacity: .8; }
 .split { height: 6px; background: var(--line); margin: 8px 0 4px; } .split i { display: block; height: 100%; background: var(--acc); }
+.limits { margin: 10px 0 4px; } .lim { padding: 4px 0; border: 0; }
+.lim .bar { height: 3px; background: var(--line); } .lim .bar i { display: block; height: 100%; background: var(--acc); }
+.lim.warn .bar i { background: var(--warn); } .lim.warn .num { color: var(--warn); }
+.lim.over .bar i { background: var(--bad); } .lim.over .num { color: var(--bad); }
+.lockscreen { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; }
+.lockscreen img { width: 120px; height: 120px; }

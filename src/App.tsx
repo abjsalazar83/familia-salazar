@@ -4,9 +4,12 @@ import { supabase } from './lib/supabase';
 import { useFamily, useOnline, type FamilyData } from './lib/useFamily';
 import { calculateHouseholdBalance, splitEqual } from './lib/balance';
 import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
-import { CATS, type Bill, type Expense, type HistoryMonth, type Item, type Member } from './lib/types';
+import { CATS, type Bill, type Budget, type Expense, type HistoryMonth, type Item, type Member } from './lib/types';
 import { averages, byStore, costByCategory, fixedVsVariable, monthly, savingTips, ymLabel } from './lib/history';
 import { THEMES, type ThemeId } from './themes';
+import { crossings, usage } from './lib/budget';
+import { actionTab } from './lib/actions';
+import { disableLock, enableLock, lockAvailable, lockEnabled, shouldLock, unlock } from './lib/lock';
 import { uuid, type Op, type Table } from './lib/outbox';
 import { readStoredSession } from './lib/session';
 
@@ -127,6 +130,16 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
   const [panel, setPanel] = useState<'' | 'despesa' | 'saldar'>('');
   const [editing, setEditing] = useState<Expense | null>(null);
   const [toast, setToast] = useState<Toast>(null);
+  const [locked, unlocked] = useLock();
+  // Atalhos do ícone (toque longo): ./?acao=despesa|compras|saldar|historico
+  const ready = !!data.me && !locked;
+  useEffect(() => {
+    if (!ready) return;
+    const u = new URL(location.href); const a = actionTab(u.searchParams.get('acao'));
+    if (!a) return;
+    setTab(a.tab); setPanel(a.panel); setEditing(null);
+    u.searchParams.delete('acao'); history.replaceState(null, '', u.pathname + u.search + u.hash);
+  }, [ready]);
 
   const run = async (label: string, fn: () => PromiseLike<{ error: unknown }>) => {
     if (!navigator.onLine) { setToast({ kind: 'bad', text: 'Sem ligação: nada foi guardado.' }); return false; }
@@ -149,6 +162,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
   const pendingN = queue.filter((o) => o.status === 'pending').length;
   const failed = queue.filter((o) => o.status === 'failed');
 
+  if (locked) return <LockScreen done={unlocked} />;
   if (status === 'loading') return <p className="dim">A carregar dados…</p>;
   if (status === 'error' && !data.me) return (
     <div className="card"><p className="err" role="alert">{msg(error)}</p>
@@ -189,7 +203,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
 
 type Mutate = (label: string, table: Table, kind: Op['kind'], id: string, row?: Record<string, unknown>) => Promise<boolean>;
 type Ctx = { data: FamilyData; run: (l: string, f: () => PromiseLike<{ error: unknown }>) => Promise<boolean>; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; online: boolean; setToast: (t: Toast) => void };
-const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras', recurring_bills: 'Conta' };
+const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras', recurring_bills: 'Conta', budgets: 'Limite' };
 const describeOp = (o: Op) => `${OPN[o.table]}: ${o.kind === 'create' ? 'novo' : o.kind === 'delete' ? 'apagar' : 'alterar'}${o.row.description ? ' «' + o.row.description + '»' : o.row.name ? ' «' + o.row.name + '»' : ''}`;
 function Mark({ s }: { s?: 'pending' | 'failed' }) {
   return s ? <span className={'tag ' + (s === 'failed' ? 'err' : 'warn')}>{s === 'failed' ? 'Falhou' : 'Por sincronizar'}</span> : null;
@@ -235,6 +249,8 @@ function ExpenseForm({ data, mutate, editing, close }: Ctx & { editing: Expense 
     if (!f.desc.trim()) return setErr('Escreve o que foi.');
     if (f.type === 'partilhada' && !preview) return setErr(`A tua parte tem de estar entre 0 e ${eur(cents)}.`);
     const row = { amount_cents: cents, description: f.desc.trim(), category: f.cat, paid_by: f.payer, type: f.type, split_mode: f.split, shares: f.type === 'partilhada' ? preview! : {}, date: f.date || todayIso() };
+    const cr = crossings(data.budgets, data.expenses, { ...row, id: editing?.id, is_deleted: false }, editing?.id);
+    if (cr.length && !confirm(cr.map((u) => `${u.level === 'over' ? 'Passa o' : 'Chega a 80% do'} limite ${budgetName(u.budget, ms)}: ${eur(u.spent)} / ${eur(u.budget.limit_cents)}`).join('\n') + '\n\nGravar mesmo assim?')) return;
     setBusy(true);
     const id = editing?.id ?? uuid();
     const ok = editing ? await mutate('Despesa atualizada.', 'expenses', 'patch', id, row)
@@ -336,6 +352,7 @@ function Home(p: Ctx & PanelProps & { goShop: () => void }) {
   return (
     <>
       <BalanceCard data={data} state={p.state} />
+      <Limits data={data} />
       {!panel && <button className="pri wide" onClick={() => p.openExpense(null)}>+ despesa</button>}
       {!panel && <div className="row links"><button className="link" onClick={() => setPanel('saldar')}>saldar conta</button><button className="link" onClick={p.goShop}>compras · {pending}</button></div>}
       {panel === 'despesa' && <ExpenseForm {...p} close={() => setPanel('')} />}
@@ -344,6 +361,39 @@ function Home(p: Ctx & PanelProps & { goShop: () => void }) {
       {recent.length ? <ul className="list">{recent.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} />)}</ul> : <p className="dim">Ainda não há despesas.</p>}
     </>
   );
+}
+
+export const budgetName = (b: Budget, ms: Member[]) => (b.category === '*' ? 'tudo' : b.category) + ' · ' + (b.member_id ? nameOf(ms, b.member_id) : 'casa');
+function Limits({ data }: { data: FamilyData }) {
+  const u = usage(data.budgets, data.expenses, todayIso().slice(0, 7));
+  if (!u.length) return null;
+  return (<ul className="list limits" aria-label="Limites do mês">{u.map((x) => (
+    <li key={x.budget.id} className={'lim ' + x.level}>
+      <div className="kv small"><span>{budgetName(x.budget, data.members)}</span><span className="num">{eur(x.spent)} / {eur(x.budget.limit_cents)}{x.level === 'over' ? ' · passou' : ''}</span></div>
+      <div className="bar"><i style={{ width: Math.min(100, x.ratio * 100) + '%' }} /></div></li>))}</ul>);
+}
+function LimitsEdit({ data, mutate }: Ctx) {
+  const ms = data.members, me = data.me!;
+  const [f, setF] = useState({ cat: 'Supermercado', who: '', v: '' }); const [err, setErr] = useState('');
+  const add = async () => {
+    const c = parseCents(f.v); if (!c || c <= 0) return setErr('Indica um limite maior que zero.');
+    const member_id = f.who || null;
+    if (data.budgets.some((b) => b.category === f.cat && b.member_id === member_id)) return setErr('Já existe esse limite: altera-o na lista.');
+    const id = uuid(); setErr('');
+    if (await mutate('Limite guardado.', 'budgets', 'create', id, { id, family_id: me.family_id, category: f.cat, member_id, limit_cents: c, is_deleted: false, created_at: new Date().toISOString() })) setF({ ...f, v: '' });
+  };
+  const edit = (b: Budget) => { const v = prompt(`Novo limite mensal para ${budgetName(b, ms)} (€):`, centsToInput(b.limit_cents)); if (v == null) return; const c = parseCents(v); if (c && c > 0) mutate('Limite atualizado.', 'budgets', 'patch', b.id, { limit_cents: c }); };
+  const del = (b: Budget) => { if (confirm(`Apagar o limite ${budgetName(b, ms)}?`)) mutate('Limite apagado.', 'budgets', 'patch', b.id, { is_deleted: true }); };
+  return (<><h3>limites mensais</h3>
+    <p className="dim small">casa = despesas partilhadas · pessoa = despesas pessoais dessa pessoa · aviso a 80%, alerta a 100%</p>
+    <ul className="list">{data.budgets.map((b) => <li key={b.id} className="li"><span className="grow">{budgetName(b, ms)}</span><span className="num">{eur(b.limit_cents)}</span><button className="link" onClick={() => edit(b)}>alterar</button><button className="link" onClick={() => del(b)}>apagar</button></li>)}
+      {!data.budgets.length && <li className="li dim small">sem limites ainda</li>}</ul>
+    <div className="row">
+      <select aria-label="Categoria" value={f.cat} onChange={(e) => setF({ ...f, cat: e.target.value })}><option value="*">tudo</option>{CATS.map((c) => <option key={c}>{c}</option>)}</select>
+      <select aria-label="De quem" value={f.who} onChange={(e) => setF({ ...f, who: e.target.value })}><option value="">casa</option>{ms.map((m) => <option key={m.id} value={m.id}>{m.display_name}</option>)}</select>
+      <input aria-label="Limite €/mês" inputMode="decimal" placeholder="€/mês" value={f.v} onChange={(e) => setF({ ...f, v: e.target.value })} style={{ width: '6em' }} />
+      <button className="pri" onClick={add}>+</button></div>
+    {err && <p className="err small" role="alert">{err}</p>}</>);
 }
 
 function Notes({ notes }: { notes: FamilyData['notes'] }) {
@@ -410,6 +460,35 @@ function Shopping({ data, mutate, state }: Ctx) {
   );
 }
 
+function useLock() {
+  const [locked, setLocked] = useState(() => shouldLock(lockEnabled(), null, Date.now()));
+  useEffect(() => {
+    let hiddenAt: number | null = Date.now();
+    const f = () => { if (document.hidden) hiddenAt = Date.now(); else if (shouldLock(lockEnabled(), hiddenAt, Date.now())) setLocked(true); };
+    document.addEventListener('visibilitychange', f); return () => document.removeEventListener('visibilitychange', f);
+  }, []);
+  return [locked, () => setLocked(false)] as const;
+}
+function LockScreen({ done }: { done: () => void }) {
+  const [err, setErr] = useState('');
+  const go = async () => { setErr(''); try { await unlock(); done(); } catch (e) { setErr(msg(e)); } };
+  useEffect(() => { go(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return (<div className="lockscreen" role="dialog" aria-label="App bloqueada">
+    <img src="./icon-192.png" alt="" />
+    <button className="pri wide" onClick={go}>desbloquear com impressão digital</button>
+    {err && <p className="err small" role="alert">{err}</p>}
+    <button className="link" onClick={async () => { disableLock(); await supabase.auth.signOut(); done(); }}>entrar com email e palavra-passe</button>
+  </div>);
+}
+function Lock() {
+  const [on, setOn] = useState(lockEnabled()); const [ok, setOk] = useState<boolean | null>(null); const [err, setErr] = useState('');
+  useEffect(() => { lockAvailable().then(setOk); }, []);
+  const toggle = async () => { setErr(''); try { if (on) disableLock(); else await enableLock('Família Salazar'); setOn(lockEnabled()); } catch (e) { setErr(msg(e)); } };
+  return (<><h3>entrada rápida</h3><ul className="list">
+    <li className="li"><span className="grow">pedir impressão digital ao abrir</span>{ok ? <button className="link" onClick={toggle}>{on ? 'desligar' : 'ligar'}</button> : <span className="dim small">{ok === false ? 'sem leitor neste aparelho' : '…'}</span>}</li>
+    <li className="li dim small">bloqueio só deste aparelho: a sessão continua iniciada; a impressão digital fica no telemóvel e nunca sai dele. Se falhar, entra com email.</li>
+  </ul>{err && <p className="err small" role="alert">{err}</p>}</>);
+}
 function displayMode(): 'fullscreen' | 'standalone' | 'browser' {
   const q = (m: string) => window.matchMedia?.(`(display-mode: ${m})`).matches;
   if (q('fullscreen') || document.fullscreenElement) return 'fullscreen';
@@ -429,7 +508,7 @@ function Screen() {
     {ios && mode === 'standalone' && <li className="li dim small">no iPhone isto já é o máximo: a barra de estado fica por cima da app.</li>}
   </ul></>);
 }
-function Settings({ data, online, theme, setTheme }: Ctx & { theme: ThemeId; setTheme: (t: ThemeId) => void }) {
+function Settings({ data, online, theme, setTheme, mutate, run, state, setToast }: Ctx & { theme: ThemeId; setTheme: (t: ThemeId) => void }) {
   const [copied, setCopied] = useState(false);
   const code = data.family!.invite_code;
   const copy = async () => { try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* sem permissão: o código fica visível */ } };
@@ -439,7 +518,9 @@ function Settings({ data, online, theme, setTheme }: Ctx & { theme: ThemeId; set
       <ul className="list themes" role="radiogroup" aria-label="Tema">{THEMES.map((t) => (
         <li key={t.id}><button role="radio" aria-checked={theme === t.id} className={'li theme' + (theme === t.id ? ' on' : '')} onClick={() => setTheme(t.id)}>
           <span className="sw" style={{ background: t.bg, boxShadow: `inset -10px 0 0 ${t.acc}` }} /><span className="grow">{t.name}</span>{theme === t.id && <span className="acc">●</span>}</button></li>))}</ul>
+      <Lock />
       <Screen />
+      <LimitsEdit data={data} mutate={mutate} run={run} state={state} online={online} setToast={setToast} />
       <h3>família</h3>
       <ul className="list">{data.members.map((m) => <li key={m.id} className="li"><span className="grow">{m.display_name}</span>{m.id === data.me!.id && <span className="dim">tu</span>}</li>)}
         <li className="li"><span className="grow dim">convite</span><span className="num acc">{code}</span><button className="link" onClick={copy}>{copied ? 'copiado' : 'copiar'}</button></li></ul>

@@ -3,9 +3,8 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "icons": "node scripts/icons.mjs",
-    "dev": "node scripts/icons.mjs && vite",
-    "build": "node scripts/icons.mjs && tsc && vite build",
+    "dev": "vite",
+    "build": "tsc && vite build",
     "test": "vitest run",
     "preview": "vite preview"
   },

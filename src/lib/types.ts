@@ -14,3 +14,4 @@ export type Note = { id: string; kind: 'acerto' | 'fixa' | 'referencia'; title: 
 export const CATS = ['Supermercado', 'Casa', 'Lazer', 'Saúde', 'Escola', 'Transporte', 'Subscrições', 'Outros'];
 export type HistoryMonth = { id: string; ym: string; total_cents: number; extra_cents: number; cats: Record<string, number>; provisional: boolean; note: string | null };
 export type Bill = { id: string; family_id: string; name: string; amount_cents: number | null; period: 'mensal' | 'bimestral' | 'trimestral' | 'anual' | 'variável'; estimate: boolean; payer: string | null; method: string | null; note: string | null; sort: number };
+export type Budget = { id: string; family_id: string; category: string; member_id: string | null; limit_cents: number; is_deleted: boolean; created_at: string };

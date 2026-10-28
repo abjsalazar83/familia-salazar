@@ -4,7 +4,7 @@ import { calculateHouseholdBalance } from './balance';
 
 const A = 'a', N = 'n';
 const exp = (id: string, cents: number, payer: string) => ({ id, family_id: 'f', amount_cents: cents, description: id, category: 'Outros', paid_by: payer, type: 'partilhada', split_mode: '50/50', shares: { [A]: cents / 2, [N]: cents / 2 }, date: '2026-10-28', is_deleted: false, created_at: '' });
-const empty = (): Snapshot => ({ expenses: [], settlements: [], shopping_items: [], recurring_bills: [] });
+const empty = (): Snapshot => ({ expenses: [], settlements: [], shopping_items: [], recurring_bills: [], budgets: [] });
 const ok = async (): Promise<ExecResult> => ({ ok: true });
 
 describe('outbox', () => {
