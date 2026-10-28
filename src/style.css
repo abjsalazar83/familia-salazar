@@ -13,6 +13,10 @@
 [data-theme=catppuccin-latte] { --bg:#eff1f5; --bg2:#e6e9ef; --line:#ccd0da; --text:#4c4f69; --dim:#6c6f85; --acc:#8839ef; --on-acc:#eff1f5; --ok:#40a02b; --warn:#df8e1d; --bad:#d20f39 ; --card:var(--bg2); --fill:var(--line); color-scheme: light; }
 :root { --r: 12px; --spring: cubic-bezier(.2,.9,.25,1.05); --ease: cubic-bezier(.25,.8,.25,1); }
 * { box-sizing: border-box; }
+/* Temas personalizados: barra de separadores (e a zona segura por baixo) na cor do tema, nunca branca. */
+[data-theme=tokyo-night], [data-theme=catppuccin], [data-theme=gruvbox], [data-theme=nord], [data-theme=everforest], [data-theme=kanagawa], [data-theme=rose-pine], [data-theme=matte-black], [data-theme=catppuccin-latte] { --bar: color-mix(in srgb, var(--bg2) 94%, transparent); }
+@supports not (color: color-mix(in srgb, red, red)) { [data-theme=tokyo-night], [data-theme=catppuccin], [data-theme=gruvbox], [data-theme=nord], [data-theme=everforest], [data-theme=kanagawa], [data-theme=rose-pine], [data-theme=matte-black], [data-theme=catppuccin-latte] { --bar: var(--bg2); } }
+html { background: var(--bg); }
 html, body, #root { margin: 0; min-height: 100%; min-height: 100dvh; overscroll-behavior: none; background: var(--bg); color: var(--text); font: 17px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100%; }
 .wrap { max-width: 640px; margin: 0 auto; padding: calc(8px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(96px + max(16px, env(safe-area-inset-bottom))) calc(16px + env(safe-area-inset-left)); }
 .top { display: flex; justify-content: space-between; align-items: center; padding: 6px 0 0; }
@@ -125,3 +129,4 @@ img, svg, table { max-width: 100%; }
 /* Banner de instalação: folha pequena por cima da barra de separadores, nunca modal. */
 .isheet { position: fixed; z-index: 11; left: calc(12px + env(safe-area-inset-left)); right: calc(12px + env(safe-area-inset-right)); bottom: calc(64px + max(16px, env(safe-area-inset-bottom))); max-width: 616px; margin: 0 auto; display: flex; gap: 12px; align-items: center; padding: 10px 12px; background: var(--card); border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.18); animation: fs-pop .25s var(--spring); -webkit-user-select: none; user-select: none; }
 .isheet img { border-radius: 10px; } .isheet .x { border: 0; background: none; color: var(--dim); min-height: 44px; min-width: 44px; font-size: 20px; }
+.themes .list.sub { margin: 0; padding: 0; border-radius: 0; background: none; } .themes .list.sub li { padding-left: 12px; } .themes .list.sub li:last-child { padding-bottom: 0; }

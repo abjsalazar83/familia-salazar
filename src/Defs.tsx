@@ -51,9 +51,7 @@ export default function Settings({ data, online, theme, setTheme, mutate, run, s
   return (
     <>
       <h3>tema</h3>
-      <ul className="list themes" role="radiogroup" aria-label="Tema">{THEMES.map((t) => (
-        <li key={t.id}><button role="radio" aria-checked={theme === t.id} className={'li theme' + (theme === t.id ? ' on' : '')} onClick={() => setTheme(t.id)}>
-          <span className="sw" style={{ background: t.bg, boxShadow: `inset -10px 0 0 ${t.acc}` }} /><span className="grow">{t.name}</span>{theme === t.id && <span className="acc">●</span>}</button></li>))}</ul>
+      <ThemePicker theme={theme} setTheme={setTheme} />
       <Lock />
       <Screen />
       <LimitsEdit data={data} mutate={mutate} run={run} state={state} online={online} setToast={setToast} extra={extra} />
@@ -66,4 +64,17 @@ export default function Settings({ data, online, theme, setTheme, mutate, run, s
       <button className="link" disabled={!online} onClick={() => supabase.auth.signOut()}>terminar sessão</button>{!online && <p className="dim small">só com rede, para não perder o que está por sincronizar</p>}
     </>
   );
+}
+
+/** Um só campo com o tema atual; toca para abrir a lista e escolher. */
+function ThemePicker({ theme, setTheme }: { theme: ThemeId; setTheme: (t: ThemeId) => void }) {
+  const [open, setOpen] = useState(false);
+  const cur = THEMES.find((t) => t.id === theme) ?? THEMES[0];
+  const sw = (t: typeof cur) => <span className="sw" style={{ background: t.bg, boxShadow: `inset -10px 0 0 ${t.acc}` }} />;
+  return (<ul className="list themes">
+    <li><button className="li theme" aria-expanded={open} aria-haspopup="listbox" onClick={() => setOpen(!open)}>{sw(cur)}<span className="grow">{cur.name}</span><span className="dim">{open ? '⌃' : '›'}</span></button></li>
+    {open && <li><ul className="list sub" role="listbox" aria-label="Tema">{THEMES.map((t) => (
+      <li key={t.id}><button role="option" aria-selected={theme === t.id} className={'li theme' + (theme === t.id ? ' on' : '')} onClick={() => { setTheme(t.id); setOpen(false); }}>
+        {sw(t)}<span className="grow">{t.name}</span>{theme === t.id && <span className="acc">✓</span>}</button></li>))}</ul></li>}
+  </ul>);
 }

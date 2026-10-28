@@ -36,7 +36,7 @@ function useTheme() {
   useEffect(() => {
     const mq = matchMedia('(prefers-color-scheme: dark)');
     const apply = () => { const t = THEMES.find((x) => x.id === theme)!; const bg = theme === 'auto' ? (mq.matches ? '#000000' : '#f2f2f7') : t.bg;
-      document.documentElement.dataset.theme = theme; document.querySelectorAll('meta[name=theme-color]').forEach((m, i) => m.setAttribute('content', theme === 'auto' ? (i ? '#000000' : '#f2f2f7') : bg)); };
+      document.documentElement.dataset.theme = theme; document.querySelector('meta[name=color-scheme]')?.setAttribute('content', theme === 'auto' ? 'light dark' : theme === 'light' || theme === 'catppuccin-latte' ? 'light' : 'dark'); document.querySelectorAll('meta[name=theme-color]').forEach((m, i) => m.setAttribute('content', theme === 'auto' ? (i ? '#000000' : '#f2f2f7') : bg)); };
     localStorage.setItem('fs-theme2', theme); apply(); mq.addEventListener('change', apply); return () => mq.removeEventListener('change', apply);
   }, [theme]);
   return [theme, setTheme] as const;
