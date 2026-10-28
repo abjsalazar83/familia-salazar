@@ -9,7 +9,7 @@
 [data-theme=matte-black] { --bg:#121212; --bg2:#0b0b0b; --line:#262626; --text:#bebebe; --dim:#7a7a7a; --acc:#e68e0d; --on-acc:#121212; --ok:#8a9a5b; --warn:#f59e0b; --bad:#d35f5f; color-scheme: dark; }
 [data-theme=catppuccin-latte] { --bg:#eff1f5; --bg2:#e6e9ef; --line:#ccd0da; --text:#4c4f69; --dim:#6c6f85; --acc:#8839ef; --on-acc:#eff1f5; --ok:#40a02b; --warn:#df8e1d; --bad:#d20f39; color-scheme: light; }
 * { box-sizing: border-box; border-radius: 0 !important; }
-html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font: 15px/1.5 "JetBrainsMono Nerd Font", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; -webkit-text-size-adjust: 100%; }
+html, body, #root { margin: 0; min-height: 100%; min-height: 100dvh; overscroll-behavior: none; background: var(--bg); color: var(--text); font: 15px/1.5 "JetBrainsMono Nerd Font", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; -webkit-text-size-adjust: 100%; }
 .wrap { max-width: 640px; margin: 0 auto; padding: calc(10px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(76px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left)); }
 .top { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
 h1 { font-size: 16px; margin: 0; font-weight: 600; }
@@ -69,3 +69,8 @@ details { margin: 8px 0; } summary { color: var(--dim); cursor: pointer; font-si
 .themes .theme { width: 100%; border: 0; min-height: 0; padding: 8px 0; text-align: left; display: flex; gap: 10px; align-items: center; color: var(--text) !important; font-size: 15px !important; }
 .sw { width: 30px; height: 16px; border: 1px solid var(--line); flex: none; }
 .theme.on { color: var(--acc) !important; }
+.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+.t td { padding: 7px 0 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.t td:first-child { padding-left: 0; width: 100%; } .t tr:last-child td { border-bottom: 0; }
+.t i { display: block; height: 2px; background: var(--acc); margin-top: 3px; opacity: .8; }
+.split { height: 6px; background: var(--line); margin: 8px 0 4px; } .split i { display: block; height: 100%; background: var(--acc); }

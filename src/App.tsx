@@ -5,7 +5,7 @@ import { useFamily, useOnline, type FamilyData } from './lib/useFamily';
 import { calculateHouseholdBalance, splitEqual } from './lib/balance';
 import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
 import { CATS, type Bill, type Expense, type HistoryMonth, type Item, type Member } from './lib/types';
-import { averages, monthly, yearly, ymLabel } from './lib/history';
+import { averages, byStore, costByCategory, fixedVsVariable, monthly, savingTips, ymLabel } from './lib/history';
 import { THEMES, type ThemeId } from './themes';
 import { uuid, type Op, type Table } from './lib/outbox';
 import { readStoredSession } from './lib/session';
@@ -410,6 +410,25 @@ function Shopping({ data, mutate, state }: Ctx) {
   );
 }
 
+function displayMode(): 'fullscreen' | 'standalone' | 'browser' {
+  const q = (m: string) => window.matchMedia?.(`(display-mode: ${m})`).matches;
+  if (q('fullscreen') || document.fullscreenElement) return 'fullscreen';
+  if (q('standalone') || (navigator as Navigator & { standalone?: boolean }).standalone) return 'standalone';
+  return 'browser';
+}
+function Screen() {
+  const [mode, setMode] = useState(displayMode());
+  useEffect(() => { const f = () => setMode(displayMode()); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f); }, []);
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const canFs = !!document.documentElement.requestFullscreen && !ios;
+  const toggle = async () => { try { if (document.fullscreenElement) { localStorage.setItem('fs-autofs', 'off'); await document.exitFullscreen(); } else { localStorage.removeItem('fs-autofs'); await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } } catch { /* recusado pelo browser */ } setMode(displayMode()); };
+  return (<><h3>ecrã</h3><ul className="list">
+    <li className="li"><span className="grow">modo atual</span><span className="acc">{mode === 'fullscreen' ? 'ecrã inteiro' : mode === 'standalone' ? 'app instalada' : 'browser'}</span></li>
+    {canFs && <li className="li"><span className="grow">ecrã inteiro</span><button className="link" onClick={toggle}>{document.fullscreenElement ? 'sair' : 'ativar'}</button></li>}
+    {mode === 'browser' && <li className="li dim small">{ios ? 'Safari → Partilhar → Adicionar ao ecrã principal, e abre pelo ícone.' : 'Chrome → ⋮ → Instalar app / Adicionar ao ecrã principal, e abre pelo ícone.'}</li>}
+    {ios && mode === 'standalone' && <li className="li dim small">no iPhone isto já é o máximo: a barra de estado fica por cima da app.</li>}
+  </ul></>);
+}
 function Settings({ data, online, theme, setTheme }: Ctx & { theme: ThemeId; setTheme: (t: ThemeId) => void }) {
   const [copied, setCopied] = useState(false);
   const code = data.family!.invite_code;
@@ -420,6 +439,7 @@ function Settings({ data, online, theme, setTheme }: Ctx & { theme: ThemeId; set
       <ul className="list themes" role="radiogroup" aria-label="Tema">{THEMES.map((t) => (
         <li key={t.id}><button role="radio" aria-checked={theme === t.id} className={'li theme' + (theme === t.id ? ' on' : '')} onClick={() => setTheme(t.id)}>
           <span className="sw" style={{ background: t.bg, boxShadow: `inset -10px 0 0 ${t.acc}` }} /><span className="grow">{t.name}</span>{theme === t.id && <span className="acc">●</span>}</button></li>))}</ul>
+      <Screen />
       <h3>família</h3>
       <ul className="list">{data.members.map((m) => <li key={m.id} className="li"><span className="grow">{m.display_name}</span>{m.id === data.me!.id && <span className="dim">tu</span>}</li>)}
         <li className="li"><span className="grow dim">convite</span><span className="num acc">{code}</span><button className="link" onClick={copy}>{copied ? 'copiado' : 'copiar'}</button></li></ul>
@@ -445,31 +465,53 @@ function History({ data }: { data: FamilyData }) {
   const [n, setN] = useState(12);
   const [open, setOpen] = useState<string | null>(null);
   const a = useMemo(() => averages(ms, n), [ms, n]);
-  const ys = useMemo(() => yearly(ms), [ms]);
-  const acertos = data.notes.filter((x) => x.kind === 'acerto');
+  const cats = useMemo(() => costByCategory(ms, n), [ms, n]);
+  const fv = useMemo(() => fixedVsVariable(data.bills, a?.total ?? 0), [data.bills, a]);
+  const tips = useMemo(() => savingTips(ms, data.bills, n), [ms, data.bills, n]);
+  const since = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 90); return d.toISOString().slice(0, 10); }, []);
+  const stores = useMemo(() => byStore(data.expenses, since), [data.expenses, since]);
+  const ym = todayIso().slice(0, 7);
+  const nowM = data.expenses.filter((e) => !e.is_deleted && e.type === 'partilhada' && e.date.startsWith(ym)).reduce((s, e) => s + e.amount_cents, 0);
+  const notes = data.notes;
   if (!ms.length) return <p className="dim">sem histórico ainda · corre migration_v3.sql e o seed privado no Supabase</p>;
   const last = [...ms].sort((x, y) => x.ym.localeCompare(y.ym)).slice(-n);
+  const tr = (t: number | null) => t == null ? <span className="dim">—</span> : <span className={t > 0 ? 'bad' : t < 0 ? 'ok' : 'dim'}>{t > 0 ? '↑' : t < 0 ? '↓' : '='}{Math.abs(t)}%</span>;
   return (
     <>
       <div className="seg" role="radiogroup" aria-label="Período">{[12, 24, 60].map((k) => <button key={k} role="radio" aria-checked={n === k} className={n === k ? 'pri' : ''} onClick={() => setN(k)}>{k}m</button>)}</div>
       {a && <div className="kpi">
-        <div><span className="big num">{eur(a.total)}</span><span className="dim">/mês</span></div>
-        <div className="dim">{eur(a.noExtra)} sem extraordinários · {ymLabel(a.from)}–{ymLabel(a.to)}</div>
+        <div><span className="big num">{eur(a.total)}</span><span className="dim">/mês · {eur(a.total * 12)}/ano</span></div>
+        <div className="dim small">{eur(a.noExtra)}/mês sem extraordinários · {ymLabel(a.from)}–{ymLabel(a.to)}</div>
       </div>}
-      <Bars items={last.map((m) => ({ label: ymLabel(m.ym) + (m.provisional ? ' (provisório)' : ''), v: m.total_cents, dim: m.provisional }))} avg={a?.total} />
-      <div className="axis dim small"><span>{ymLabel(last[0].ym)}</span><span>— média</span><span>{ymLabel(last[last.length - 1].ym)}</span></div>
-      {a && <><h3>por categoria · média/mês</h3>
-        <ul className="list hbars">{a.byCat.filter(([, v]) => v > 0).map(([c, v]) => <li key={c} className="li"><span className="grow">{c}<i style={{ width: (v / a.byCat[0][1]) * 100 + '%' }} /></span><span className="num">{eur(v)}</span></li>)}</ul></>}
-      <h3>por ano · média/mês</h3>
-      <Bars height={70} items={ys.map((y) => ({ label: y.year, v: y.avg }))} />
-      <div className="axis dim small">{ys.map((y) => <span key={y.year}>{y.year.slice(2)}</span>)}</div>
-      {acertos.length > 0 && <><h3>acertos</h3><Notes notes={acertos} /></>}
+      <Bars height={70} items={last.map((m) => ({ label: ymLabel(m.ym), v: m.total_cents, dim: m.provisional }))} avg={a?.total} />
+      <div className="axis dim small"><span>{ymLabel(last[0].ym)}</span><span>┄ média</span><span>{ymLabel(last[last.length - 1].ym)}</span></div>
+      {nowM > 0 && a && <p className="small">este mês na app: <span className="num">{eur(nowM)}</span> <span className="dim">· {Math.round((nowM / a.total) * 100)}% da média</span></p>}
+
+      <h3>quanto custa · €/mês · €/ano · % · vs {n}m antes</h3>
+      <table className="t"><tbody>{cats.map((c) => <tr key={c.cat}>
+        <td>{c.cat}<i style={{ width: (c.month / cats[0].month) * 100 + '%' }} /></td><td className="num">{eur(c.month)}</td><td className="num dim">{eur(c.year).replace(',00', '')}</td><td className="num dim">{c.pct}%</td><td className="num">{tr(c.trend)}</td></tr>)}</tbody></table>
+
+      {a && data.bills.length > 0 && <><h3>fixas vs variáveis</h3>
+        <div className="split"><i style={{ width: Math.min(100, (fv.fixed / Math.max(1, a.total)) * 100) + '%' }} /></div>
+        <div className="kv"><span>fixas <span className="num">{eur(fv.fixed)}</span></span><span>variáveis <span className="num">{eur(fv.variable)}</span></span></div>
+        <p className="dim small">fixas = contas recorrentes com valor{fv.estimated ? ' (inclui estimativas ≈)' : ''}{fv.unknown ? ` · ${fv.unknown} por registar` : ''} · variáveis = média − fixas</p></>}
+
+      {tips.length > 0 && <><h3>onde poupar</h3>
+        <ul className="list">{tips.map((t, k) => <li key={k} className="li"><div className="grow"><div>{t.title}</div><div className="dim small">{t.detail}</div></div>
+          {t.saving != null && <span className="num ok">{t.estimate ? '≈ ' : 'até '}{eur(t.saving)}<span className="dim small">/mês</span></span>}</li>)}</ul>
+        <p className="dim small">≈ = estimativa: voltar à média dos {n} meses. «até» = cortar tudo.</p></>}
+
+      {stores.length > 0 && <><h3>supermercado por loja · 90 dias</h3>
+        <ul className="list">{stores.map(([s, v]) => <li key={s} className="li"><span className="grow">{s}</span><span className="num">{eur(v)}</span></li>)}</ul></>}
+
+      {notes.length > 0 && <><h3>notas</h3><Notes notes={notes} /></>}
+
       <h3>meses</h3>
-      <ul className="list">{[...ms].sort((x, y) => y.ym.localeCompare(x.ym)).map((m: HistoryMonth) => (
+      <ul className="list">{[...ms].sort((x, y) => y.ym.localeCompare(x.ym)).slice(0, n).map((m: HistoryMonth) => (
         <li key={m.ym} className="li col"><button className="row-btn" aria-expanded={open === m.ym} onClick={() => setOpen(open === m.ym ? null : m.ym)}>
           <span className="grow">{ymLabel(m.ym)}{m.provisional && <span className="warn"> · provisório</span>}</span>
-          {m.extra_cents > 0 && <span className="dim small">+{eur(m.extra_cents)} extra </span>}<span className="num">{eur(m.total_cents)}</span></button>
-          {open === m.ym && <div className="sub dim small">{Object.entries(m.cats).sort((x, y) => y[1] - x[1]).map(([c, v]) => <div key={c} className="kv"><span>{c}</span><span className="num">{eur(v)}</span></div>)}{m.note && <p>{m.note}</p>}</div>}
+          <span className="num">{eur(m.total_cents)}</span></button>
+          {open === m.ym && <div className="sub dim small">{Object.entries(m.cats).sort((x, y) => y[1] - x[1]).map(([c, v]) => <div key={c} className="kv"><span>{c}</span><span className="num">{eur(v)}</span></div>)}{m.extra_cents > 0 && <div className="kv"><span>dos quais extraordinários</span><span className="num">{eur(m.extra_cents)}</span></div>}{m.note && <p>{m.note}</p>}</div>}
         </li>))}</ul>
     </>
   );

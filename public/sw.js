@@ -1,6 +1,6 @@
 // Service worker: pré-guarda a "casca" da app (HTML, JS, CSS, ícones) para abrir sem rede.
 // Nunca guarda pedidos ao Supabase: os dados offline vivem em IndexedDB, geridos pela app.
-const VERSION = 'fs-v3';
+const VERSION = 'fs-v4';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-180.png', './icon-512.png', './icon-maskable-512.png'];
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
@@ -21,6 +21,10 @@ self.addEventListener('fetch', (e) => {
   if (req.mode === 'navigate') {
     e.respondWith(fetch(req).then((r) => { const cp = r.clone(); caches.open(VERSION).then((c) => c.put('./index.html', cp)); return r; })
       .catch(() => caches.match('./index.html')));
+    return;
+  }
+  if (url.pathname.endsWith('.webmanifest')) { // manifesto: rede primeiro, para o Android ver alterações
+    e.respondWith(fetch(req).then((r) => { const cp = r.clone(); caches.open(VERSION).then((c) => c.put(req, cp)); return r; }).catch(() => caches.match(req)));
     return;
   }
   e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then((r) => {
