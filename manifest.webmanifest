@@ -33,5 +33,55 @@
   "display_override": [
     "fullscreen",
     "standalone"
+  ],
+  "shortcuts": [
+    {
+      "name": "Nova despesa",
+      "short_name": "+ Despesa",
+      "url": "./?acao=despesa",
+      "icons": [
+        {
+          "src": "sc-despesa.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Lista de compras",
+      "short_name": "Compras",
+      "url": "./?acao=compras",
+      "icons": [
+        {
+          "src": "sc-compras.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Saldo e saldar",
+      "short_name": "Saldo / Saldar",
+      "url": "./?acao=saldar",
+      "icons": [
+        {
+          "src": "sc-saldo.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Histórico",
+      "short_name": "Histórico",
+      "url": "./?acao=historico",
+      "icons": [
+        {
+          "src": "sc-historico.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
   ]
 }
