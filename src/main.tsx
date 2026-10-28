@@ -15,3 +15,9 @@ if (/android/i.test(navigator.userAgent) && document.documentElement.requestFull
   };
   document.addEventListener('pointerup', go, { capture: true });
 }
+
+// Instalar app (Android/Chrome): guarda o pedido para o botão em ⚙.
+type BIP = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
+declare global { interface Window { __bip?: BIP | null } }
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); window.__bip = e as BIP; window.dispatchEvent(new Event('fs-bip')); });
+window.addEventListener('appinstalled', () => { window.__bip = null; window.dispatchEvent(new Event('fs-bip')); });

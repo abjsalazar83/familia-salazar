@@ -1,6 +1,6 @@
 // Service worker: pré-guarda a "casca" da app (HTML, JS, CSS, ícones) para abrir sem rede.
 // Nunca guarda pedidos ao Supabase: os dados offline vivem em IndexedDB, geridos pela app.
-const VERSION = 'fs-v5';
+const VERSION = 'fs-v6';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-180.png', './icon-512.png', './icon-maskable-512.png', './favicon.ico', './favicon-32.png', './sc-despesa.png', './sc-compras.png', './sc-saldo.png', './sc-historico.png'];
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {

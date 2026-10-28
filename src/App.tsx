@@ -179,6 +179,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
         {pendingN > 0 && <span className="warn"> · {pendingN} por sincronizar{syncing && online ? ' (a enviar…)' : ''}</span>}
         <button className={'gear' + (tab === 'defs' ? ' on' : '')} aria-label="Definições" onClick={() => { setTab('defs'); setPanel(''); }}>⚙</button>
       </div>
+      <InstallBanner />
       {toast && <div className={'banner ' + toast.kind} role={toast.kind === 'bad' ? 'alert' : 'status'}>{toast.text}{toast.kind === 'bad' && <button className="x" aria-label="Fechar" onClick={() => setToast(null)}>×</button>}</div>}
       {failed.length > 0 && <div className="card" role="alert"><h2 className="err">Falhou ({failed.length})</h2>
         <p className="dim small">O servidor não aceitou estas alterações. Continuam guardadas neste aparelho até decidires.</p>
@@ -489,6 +490,13 @@ function Lock() {
     <li className="li dim small">bloqueio só deste aparelho: a sessão continua iniciada; a impressão digital fica no telemóvel e nunca sai dele. Se falhar, entra com email.</li>
   </ul>{err && <p className="err small" role="alert">{err}</p>}</>);
 }
+function InstallBanner() {
+  const [bip, setBip] = useState(!!window.__bip); const [hide, setHide] = useState(false);
+  useEffect(() => { const f = () => setBip(!!window.__bip); window.addEventListener('fs-bip', f); return () => window.removeEventListener('fs-bip', f); }, []);
+  if (!bip || hide || displayMode() !== 'browser') return null;
+  const go = async () => { const e = window.__bip; if (!e) return; await e.prompt(); await e.userChoice.catch(() => null); window.__bip = null; setBip(false); };
+  return <div className="banner busy" role="status">abriste no browser · <button className="link" onClick={go}>instalar app</button><button className="x" aria-label="Fechar" onClick={() => setHide(true)}>×</button></div>;
+}
 function displayMode(): 'fullscreen' | 'standalone' | 'browser' {
   const q = (m: string) => window.matchMedia?.(`(display-mode: ${m})`).matches;
   if (q('fullscreen') || document.fullscreenElement) return 'fullscreen';
@@ -499,11 +507,15 @@ function Screen() {
   const [mode, setMode] = useState(displayMode());
   useEffect(() => { const f = () => setMode(displayMode()); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f); }, []);
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const [bip, setBip] = useState(!!window.__bip);
+  useEffect(() => { const f = () => setBip(!!window.__bip); window.addEventListener('fs-bip', f); return () => window.removeEventListener('fs-bip', f); }, []);
+  const install = async () => { const e = window.__bip; if (!e) return; await e.prompt(); await e.userChoice.catch(() => null); window.__bip = null; setBip(false); };
   const canFs = !!document.documentElement.requestFullscreen && !ios;
   const toggle = async () => { try { if (document.fullscreenElement) { localStorage.setItem('fs-autofs', 'off'); await document.exitFullscreen(); } else { localStorage.removeItem('fs-autofs'); await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } } catch { /* recusado pelo browser */ } setMode(displayMode()); };
   return (<><h3>ecrã</h3><ul className="list">
     <li className="li"><span className="grow">modo atual</span><span className="acc">{mode === 'fullscreen' ? 'ecrã inteiro' : mode === 'standalone' ? 'app instalada' : 'browser'}</span></li>
     {canFs && <li className="li"><span className="grow">ecrã inteiro</span><button className="link" onClick={toggle}>{document.fullscreenElement ? 'sair' : 'ativar'}</button></li>}
+    {bip && mode === 'browser' && <li className="li"><span className="grow">instalar como app</span><button className="pri" onClick={install}>instalar app</button></li>}
     {mode === 'browser' && <li className="li dim small">{ios ? 'Safari → Partilhar → Adicionar ao ecrã principal, e abre pelo ícone.' : 'Chrome → ⋮ → Instalar app / Adicionar ao ecrã principal, e abre pelo ícone.'}</li>}
     {ios && mode === 'standalone' && <li className="li dim small">no iPhone isto já é o máximo: a barra de estado fica por cima da app.</li>}
   </ul></>);
