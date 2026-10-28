@@ -34,3 +34,4 @@ details { margin-top: 10px; } summary { color: var(--dim); cursor: pointer; min-
 .code { font-size: 22px; letter-spacing: 3px; padding: 4px 10px; border: 1px dashed var(--line); }
 .tabs { position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 6px max(8px, calc((100vw - 640px)/2)) calc(6px + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--line); }
 .tabs button { border: 0; padding: 0 4px; font-size: 14px; }
+.tag { display: inline-block; font-size: 11px; padding: 1px 6px; border: 1px solid currentColor; border-radius: 4px; vertical-align: middle; white-space: nowrap; }

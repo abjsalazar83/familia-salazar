@@ -6,6 +6,8 @@ import { calculateHouseholdBalance, splitEqual } from './lib/balance';
 import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
 import { CATS, type Expense, type Item, type Member } from './lib/types';
 import { SEED_NOTES } from './lib/seed';
+import { uuid, type Op, type Table } from './lib/outbox';
+import { readStoredSession } from './lib/session';
 
 type Tab = 'inicio' | 'despesas' | 'compras' | 'defs';
 type Toast = { kind: 'ok' | 'bad' | 'busy'; text: string } | null;
@@ -33,8 +35,9 @@ export default function App() {
   const [theme, setTheme] = useTheme();
   const online = useOnline();
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setReady(true); });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    // Sem rede, a renovação do token falha mas a sessão guardada continua válida para ver e pôr alterações em fila.
+    supabase.auth.getSession().then(({ data }) => { setSession(data.session ?? (navigator.onLine ? null : readStoredSession())); setReady(true); });
+    const { data: sub } = supabase.auth.onAuthStateChange((e, s) => setSession(s ?? (e !== 'SIGNED_OUT' && !navigator.onLine ? readStoredSession() : null)));
     return () => sub.subscription.unsubscribe();
   }, []);
   return (
@@ -43,7 +46,7 @@ export default function App() {
         <h1>Família Salazar</h1>
         <span className={'pill ' + (online ? 'ok' : 'bad')} role="status">{online ? 'online' : 'offline'}</span>
       </header>
-      {!online && <div className="banner bad" role="alert">Sem ligação. Estás a ver os últimos dados carregados; não é possível guardar até voltares a ter rede.</div>}
+      {!online && <div className="banner bad" role="alert">Sem ligação. Estás a ver os últimos dados guardados neste aparelho. O que registares fica «por sincronizar» e é enviado quando voltar a rede.</div>}
       {!ready ? <p className="dim">A carregar…</p> : !session ? <Auth online={online} /> : <Main session={session} online={online} theme={theme} setTheme={setTheme} />}
     </div>
   );
@@ -117,7 +120,7 @@ function Onboarding({ online, done }: { online: boolean; done: () => void }) {
 }
 
 function Main({ session, online, theme, setTheme }: { session: Session; online: boolean; theme: string; setTheme: (t: 'dark' | 'light') => void }) {
-  const { data, status, error, syncedAt, live, refetch } = useFamily(session);
+  const { data, state, queue, status, error, syncedAt, live, syncing, refetch, mutate: qMutate, retry, discard } = useFamily(session);
   const [tab, setTab] = useState<Tab>('inicio');
   const [panel, setPanel] = useState<'' | 'despesa' | 'saldar'>('');
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -134,22 +137,38 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
     } catch (e) { setToast({ kind: 'bad', text: 'Não foi guardado: ' + msg(e) }); return false; }
   };
 
+  const mutate = async (label: string, table: Table, kind: Op['kind'], id: string, row?: Record<string, unknown>) => {
+    try { await qMutate(table, kind, id, row); }
+    catch (e) { setToast({ kind: 'bad', text: 'Não foi possível guardar neste aparelho: ' + msg(e) }); return false; }
+    setToast({ kind: 'ok', text: navigator.onLine ? label + ' A enviar para o servidor…' : label + ' Guardado neste aparelho · por sincronizar.' });
+    setTimeout(() => setToast((t) => (t?.kind === 'ok' ? null : t)), 3000);
+    return true;
+  };
+  const pendingN = queue.filter((o) => o.status === 'pending').length;
+  const failed = queue.filter((o) => o.status === 'failed');
+
   if (status === 'loading') return <p className="dim">A carregar dados…</p>;
   if (status === 'error' && !data.me) return (
     <div className="card"><p className="err" role="alert">{msg(error)}</p>
       <button onClick={refetch}>Tentar de novo</button> <button onClick={() => supabase.auth.signOut()}>Sair</button></div>);
   if (!data.me || !data.family) return <><Onboarding online={online} done={refetch} /><button onClick={() => supabase.auth.signOut()}>Sair</button></>;
 
-  const ctx = { data, run, online, setToast };
+  const ctx = { data, run, mutate, state, online, setToast };
   const openExpense = (e: Expense | null) => { setEditing(e); setPanel('despesa'); };
   return (
     <>
       <div className="sync dim" aria-live="polite">
         {status === 'error' ? <span className="err">Falha a sincronizar: {msg(error)}</span>
-          : <>Sincronizado {syncedAt?.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}{live ? ' · tempo real' : ''}</>}
+          : <>{online ? 'Sincronizado' : 'Última sincronização'} {syncedAt?.toLocaleString('pt-PT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{live && online ? ' · tempo real' : ''}</>}
+        {pendingN > 0 && <span className="warn"> · {pendingN} por sincronizar{syncing && online ? ' (a enviar…)' : ''}</span>}
         {' · '}{data.me.display_name}
       </div>
       {toast && <div className={'banner ' + toast.kind} role={toast.kind === 'bad' ? 'alert' : 'status'}>{toast.text}{toast.kind === 'bad' && <button className="x" aria-label="Fechar" onClick={() => setToast(null)}>×</button>}</div>}
+      {failed.length > 0 && <div className="card" role="alert"><h2 className="err">Falhou ({failed.length})</h2>
+        <p className="dim small">O servidor não aceitou estas alterações. Continuam guardadas neste aparelho até decidires.</p>
+        <ul className="list">{failed.map((o) => <li key={o.opId} className="li"><div className="grow"><div>{describeOp(o)}</div><div className="err small">{msg(o.error)}</div></div>
+          <button onClick={() => retry(o.opId)} disabled={!online}>Tentar de novo</button>
+          <button className="danger" onClick={() => { if (confirm('Descartar esta alteração local? Não foi guardada no servidor.')) discard(o.opId); }}>Descartar</button></li>)}</ul></div>}
       <main>
         {tab === 'inicio' && <Home {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} goShop={() => setTab('compras')} />}
         {tab === 'despesas' && <Expenses {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} />}
@@ -164,7 +183,13 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
   );
 }
 
-type Ctx = { data: FamilyData; run: (l: string, f: () => PromiseLike<{ error: unknown }>) => Promise<boolean>; online: boolean; setToast: (t: Toast) => void };
+type Mutate = (label: string, table: Table, kind: Op['kind'], id: string, row?: Record<string, unknown>) => Promise<boolean>;
+type Ctx = { data: FamilyData; run: (l: string, f: () => PromiseLike<{ error: unknown }>) => Promise<boolean>; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; online: boolean; setToast: (t: Toast) => void };
+const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras' };
+const describeOp = (o: Op) => `${OPN[o.table]}: ${o.kind === 'create' ? 'novo' : o.kind === 'delete' ? 'apagar' : 'alterar'}${o.row.description ? ' «' + o.row.description + '»' : o.row.name ? ' «' + o.row.name + '»' : ''}`;
+function Mark({ s }: { s?: 'pending' | 'failed' }) {
+  return s ? <span className={'tag ' + (s === 'failed' ? 'err' : 'warn')}>{s === 'failed' ? 'Falhou' : 'Por sincronizar'}</span> : null;
+}
 type PanelProps = { panel: '' | 'despesa' | 'saldar'; setPanel: (p: '' | 'despesa' | 'saldar') => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
 
 const nameOf = (ms: Member[], id: string) => ms.find((m) => m.id === id)?.display_name ?? '?';
@@ -172,19 +197,20 @@ function useBalance(d: FamilyData) {
   return useMemo(() => calculateHouseholdBalance(d.members.map((m) => m.id), d.expenses, d.settlements), [d]);
 }
 
-function BalanceCard({ data }: { data: FamilyData }) {
+function BalanceCard({ data, state }: { data: FamilyData; state: Ctx['state'] }) {
   const b = useBalance(data);
   return (
     <div className="card balance" aria-live="polite">
       <div className="dim small">Saldo atual</div>
       <div className="big num">{eur(b.debt?.cents ?? 0)}</div>
       <div>{b.debt ? `${nameOf(data.members, b.debt.from)} deve ${eur(b.debt.cents)} a ${nameOf(data.members, b.debt.to)}` : 'Contas certas: ninguém deve nada.'}</div>
+      {[...data.expenses, ...data.settlements].some((r) => state[r.id]) && <div className="warn small">Inclui alterações deste aparelho ainda por sincronizar com o servidor.</div>}
       {data.members.length < 2 && <div className="warn small">Só há uma pessoa na família. Partilha o código de convite (Definições).</div>}
     </div>
   );
 }
 
-function ExpenseForm({ data, run, online, editing, close }: Ctx & { editing: Expense | null; close: () => void }) {
+function ExpenseForm({ data, mutate, editing, close }: Ctx & { editing: Expense | null; close: () => void }) {
   const ms = data.members; const me = data.me!;
   const other = ms.find((m) => m.id !== me.id);
   const [f, setF] = useState(() => editing ? {
@@ -205,15 +231,16 @@ function ExpenseForm({ data, run, online, editing, close }: Ctx & { editing: Exp
     if (!cents || cents <= 0) return setErr('Indica um valor maior que zero (ex.: 12,50).');
     if (!f.desc.trim()) return setErr('Escreve o que foi.');
     if (f.type === 'partilhada' && !preview) return setErr(`A tua parte tem de estar entre 0 e ${eur(cents)}.`);
-    const row = { family_id: me.family_id, amount_cents: cents, description: f.desc.trim(), category: f.cat, paid_by: f.payer, type: f.type, split_mode: f.split, shares: f.type === 'partilhada' ? preview! : {}, date: f.date || todayIso() };
+    const row = { amount_cents: cents, description: f.desc.trim(), category: f.cat, paid_by: f.payer, type: f.type, split_mode: f.split, shares: f.type === 'partilhada' ? preview! : {}, date: f.date || todayIso() };
     setBusy(true);
-    const ok = await run(editing ? 'Despesa atualizada no servidor. Saldo atualizado.' : 'Despesa guardada no servidor. Saldo atualizado.',
-      () => editing ? supabase.from('expenses').update(row).eq('id', editing.id) : supabase.from('expenses').insert(row));
+    const id = editing?.id ?? uuid();
+    const ok = editing ? await mutate('Despesa atualizada.', 'expenses', 'patch', id, row)
+      : await mutate('Despesa registada.', 'expenses', 'create', id, { id, family_id: me.family_id, ...row, is_deleted: false, created_at: new Date().toISOString() });
     setBusy(false); if (ok) close();
   };
   const remove = async () => {
     if (!editing || !confirm('Retirar esta despesa do saldo? Fica no histórico como apagada.')) return;
-    setBusy(true); const ok = await run('Despesa retirada do saldo.', () => supabase.from('expenses').update({ is_deleted: true }).eq('id', editing.id)); setBusy(false); if (ok) close();
+    setBusy(true); const ok = await mutate('Despesa retirada do saldo.', 'expenses', 'patch', editing.id, { is_deleted: true }); setBusy(false); if (ok) close();
   };
   return (
     <div className="card">
@@ -243,15 +270,15 @@ function ExpenseForm({ data, run, online, editing, close }: Ctx & { editing: Exp
       {preview && other && <p className="dim small">{me.display_name} {eur(preview[me.id])} · {other.display_name} {eur(preview[other.id])}</p>}
       {err && <p className="err" role="alert">{err}</p>}
       <div className="row">
-        <button className="pri" disabled={busy || !online} onClick={save}>{busy ? 'A guardar…' : 'Guardar despesa'}</button>
+        <button className="pri" disabled={busy} onClick={save}>{busy ? 'A guardar…' : 'Guardar despesa'}</button>
         <button onClick={close} disabled={busy}>Cancelar</button>
-        {editing && <button className="danger" disabled={busy || !online} onClick={remove}>Retirar</button>}
+        {editing && <button className="danger" disabled={busy} onClick={remove}>Retirar</button>}
       </div>
     </div>
   );
 }
 
-function SettleForm({ data, run, online, close }: Ctx & { close: () => void }) {
+function SettleForm({ data, mutate, close }: Ctx & { close: () => void }) {
   const b = useBalance(data); const ms = data.members;
   const [from, setFrom] = useState(b.debt?.from ?? data.me!.id);
   const to = ms.find((m) => m.id !== from)?.id;
@@ -264,8 +291,9 @@ function SettleForm({ data, run, online, close }: Ctx & { close: () => void }) {
     const c = parseCents(amount); setErr('');
     if (!c || c <= 0) return setErr('Indica um valor maior que zero.');
     setBusy(true);
-    const ok = await run(confirmed ? 'Liquidação confirmada. Saldo atualizado.' : 'Liquidação registada como «por confirmar». Ainda não conta no saldo.',
-      () => supabase.from('settlements').insert({ family_id: data.me!.family_id, from_member: from, to_member: to, amount_cents: c, date, method: method.trim() || null, confirmed }));
+    const id = uuid();
+    const ok = await mutate(confirmed ? 'Liquidação confirmada.' : 'Liquidação registada como «por confirmar» (não conta no saldo).', 'settlements', 'create', id,
+      { id, family_id: data.me!.family_id, from_member: from, to_member: to, amount_cents: c, date, method: method.trim() || null, confirmed, confirmed_at: null, is_deleted: false, created_at: new Date().toISOString() });
     setBusy(false); if (ok) close();
   };
   return (
@@ -282,15 +310,15 @@ function SettleForm({ data, run, online, close }: Ctx & { close: () => void }) {
       <label className="check"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /> Confirmo que o dinheiro já foi recebido</label>
       <p className="dim small">A app não faz pagamentos. Só conta no saldo depois de confirmada.</p>
       {err && <p className="err" role="alert">{err}</p>}
-      <div className="row"><button className="pri" disabled={busy || !online} onClick={save}>{busy ? 'A guardar…' : 'Registar liquidação'}</button><button onClick={close} disabled={busy}>Cancelar</button></div>
+      <div className="row"><button className="pri" disabled={busy} onClick={save}>{busy ? 'A guardar…' : 'Registar liquidação'}</button><button onClick={close} disabled={busy}>Cancelar</button></div>
     </div>
   );
 }
 
-function ExpenseRow({ e, ms, onEdit }: { e: Expense; ms: Member[]; onEdit?: () => void }) {
+function ExpenseRow({ e, ms, onEdit, s }: { e: Expense; ms: Member[]; onEdit?: () => void; s?: 'pending' | 'failed' }) {
   return (
     <li className={'li' + (e.is_deleted ? ' gone' : '')}>
-      <div className="grow"><div>{e.description}{e.is_deleted && ' (retirada)'}</div>
+      <div className="grow"><div>{e.description}{e.is_deleted && ' (retirada)'} <Mark s={s} /></div>
         <div className="dim small">{ptDate(e.date)} · {e.category} · pagou {nameOf(ms, e.paid_by)} · {e.type === 'pessoal' ? 'pessoal' : e.split_mode === '50/50' ? 'partilhada 50/50' : 'partilhada (personalizada)'}</div></div>
       <span className="num">{eur(e.amount_cents)}</span>
       {onEdit && !e.is_deleted && <button onClick={onEdit} aria-label={`Editar ${e.description}`}>Editar</button>}
@@ -305,7 +333,7 @@ function Home(p: Ctx & PanelProps & { goShop: () => void }) {
   const acertos = data.notes.filter((n) => n.kind === 'acerto');
   return (
     <>
-      <BalanceCard data={data} />
+      <BalanceCard data={data} state={p.state} />
       <div className="row">
         <button className="pri" onClick={() => p.openExpense(null)}>Adicionar despesa</button>
         <button onClick={() => setPanel('saldar')}>Saldar conta</button>
@@ -314,7 +342,7 @@ function Home(p: Ctx & PanelProps & { goShop: () => void }) {
       {panel === 'despesa' && <ExpenseForm {...p} close={() => setPanel('')} />}
       {panel === 'saldar' && <SettleForm {...p} close={() => setPanel('')} />}
       <h3>Últimas despesas</h3>
-      {recent.length ? <ul className="card list">{recent.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} />)}</ul> : <p className="dim">Ainda não há despesas.</p>}
+      {recent.length ? <ul className="card list">{recent.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} />)}</ul> : <p className="dim">Ainda não há despesas.</p>}
       {acertos.length > 0 && <><h3>Histórico importado (não conta no saldo)</h3><Notes notes={acertos} /></>}
     </>
   );
@@ -325,44 +353,44 @@ function Notes({ notes }: { notes: FamilyData['notes'] }) {
 }
 
 function Expenses(p: Ctx & PanelProps) {
-  const { data, panel, setPanel, run, online } = p;
+  const { data, panel, setPanel, mutate } = p;
   const [showGone, setShowGone] = useState(false);
   const list = data.expenses.filter((e) => showGone || !e.is_deleted);
-  const confirmS = (id: string) => run('Liquidação confirmada. Saldo atualizado.', () => supabase.from('settlements').update({ confirmed: true }).eq('id', id));
+  const confirmS = (id: string) => mutate('Liquidação confirmada.', 'settlements', 'patch', id, { confirmed: true });
   return (
     <>
-      <BalanceCard data={data} />
+      <BalanceCard data={data} state={p.state} />
       {panel === 'despesa' ? <ExpenseForm {...p} close={() => setPanel('')} /> : <button className="pri wide" onClick={() => p.openExpense(null)}>Adicionar despesa</button>}
       <h3>Despesas ({list.length})</h3>
-      {list.length ? <ul className="card list">{list.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} onEdit={() => p.openExpense(e)} />)}</ul> : <p className="dim">Ainda não há despesas.</p>}
+      {list.length ? <ul className="card list">{list.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} onEdit={() => p.openExpense(e)} />)}</ul> : <p className="dim">Ainda não há despesas.</p>}
       <label className="check small"><input type="checkbox" checked={showGone} onChange={(e) => setShowGone(e.target.checked)} /> Mostrar despesas retiradas</label>
       <h3>Liquidações</h3>
       {panel === 'saldar' ? <SettleForm {...p} close={() => setPanel('')} /> : <button onClick={() => setPanel('saldar')}>Saldar conta</button>}
       {data.settlements.length > 0 && <ul className="card list">{data.settlements.map((s) => (
         <li key={s.id} className="li">
-          <div className="grow"><div>{nameOf(data.members, s.from_member)} → {nameOf(data.members, s.to_member)}</div>
+          <div className="grow"><div>{nameOf(data.members, s.from_member)} → {nameOf(data.members, s.to_member)} <Mark s={p.state[s.id]} /></div>
             <div className="dim small">{ptDate(s.date)}{s.method ? ` · ${s.method}` : ''} · <span className={s.confirmed ? 'okt' : 'warn'}>{s.confirmed ? `confirmada${s.confirmed_at ? ' ' + ptDate(s.confirmed_at) : ''}` : 'por confirmar (não conta)'}</span></div></div>
           <span className="num">{eur(s.amount_cents)}</span>
-          {!s.confirmed && <button disabled={!online} onClick={() => confirmS(s.id)}>Confirmar recebido</button>}
+          {!s.confirmed && <button onClick={() => confirmS(s.id)}>Confirmar recebido</button>}
         </li>))}</ul>}
     </>
   );
 }
 
-function Shopping({ data, run, online }: Ctx) {
+function Shopping({ data, mutate, state }: Ctx) {
   const blank = { id: '', name: '', qty: '', note: '' };
   const [f, setF] = useState(blank); const [busy, setBusy] = useState(false);
   const save = async () => {
     if (!f.name.trim()) return;
     const row = { name: f.name.trim(), quantity: f.qty.trim() || null, note: f.note.trim() || null };
     setBusy(true);
-    const ok = await run(f.id ? 'Item atualizado.' : 'Item adicionado à lista.', () => f.id
-      ? supabase.from('shopping_items').update(row).eq('id', f.id)
-      : supabase.from('shopping_items').insert({ ...row, family_id: data.me!.family_id }));
+    const id = f.id || uuid();
+    const ok = f.id ? await mutate('Item atualizado.', 'shopping_items', 'patch', id, row)
+      : await mutate('Item adicionado à lista.', 'shopping_items', 'create', id, { id, ...row, family_id: data.me!.family_id, bought: false, created_at: new Date().toISOString() });
     setBusy(false); if (ok) setF(blank);
   };
-  const toggle = (i: Item) => run(i.bought ? 'Marcado como por comprar.' : 'Marcado como comprado.', () => supabase.from('shopping_items').update({ bought: !i.bought }).eq('id', i.id));
-  const del = (i: Item) => run('Item apagado.', () => supabase.from('shopping_items').delete().eq('id', i.id));
+  const toggle = (i: Item) => mutate(i.bought ? 'Marcado como por comprar.' : 'Marcado como comprado.', 'shopping_items', 'patch', i.id, { bought: !i.bought });
+  const del = (i: Item) => mutate('Item apagado.', 'shopping_items', 'delete', i.id);
   return (
     <>
       <div className="card">
@@ -372,15 +400,15 @@ function Shopping({ data, run, online }: Ctx) {
           <Field label="Quantidade"><input value={f.qty} maxLength={40} onChange={(e) => setF({ ...f, qty: e.target.value })} /></Field>
           <Field label="Nota"><input value={f.note} maxLength={200} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
         </details>
-        <div className="row"><button className="pri" onClick={save} disabled={busy || !online || !f.name.trim()}>{busy ? 'A guardar…' : f.id ? 'Guardar item' : 'Adicionar à lista'}</button>
+        <div className="row"><button className="pri" onClick={save} disabled={busy || !f.name.trim()}>{busy ? 'A guardar…' : f.id ? 'Guardar item' : 'Adicionar à lista'}</button>
           {f.id && <button onClick={() => setF(blank)}>Cancelar</button>}</div>
       </div>
       {data.items.length ? <ul className="card list">{data.items.map((i) => (
         <li key={i.id} className="li">
-          <label className="check grow"><input type="checkbox" checked={i.bought} disabled={!online} onChange={() => toggle(i)} />
-            <span className={i.bought ? 'gone' : ''}>{i.name}{i.quantity ? ` · ${i.quantity}` : ''}{i.note && <span className="dim small"> — {i.note}</span>}</span></label>
+          <label className="check grow"><input type="checkbox" checked={i.bought} onChange={() => toggle(i)} />
+            <span className={i.bought ? 'gone' : ''}>{i.name}{i.quantity ? ` · ${i.quantity}` : ''}{i.note && <span className="dim small"> — {i.note}</span>}</span> <Mark s={state[i.id]} /></label>
           <button onClick={() => setF({ id: i.id, name: i.name, qty: i.quantity ?? '', note: i.note ?? '' })}>Editar</button>
-          <button className="danger" disabled={!online} onClick={() => { if (confirm(`Apagar «${i.name}»?`)) del(i); }}>Apagar</button>
+          <button className="danger" onClick={() => { if (confirm(`Apagar «${i.name}»?`)) del(i); }}>Apagar</button>
         </li>))}</ul> : <p className="dim">A lista está vazia.</p>}
     </>
   );
@@ -410,7 +438,7 @@ function Settings({ data, run, online, theme, setTheme }: Ctx & { theme: string;
         <button disabled={!online} onClick={importSeed}>{data.notes.length ? 'Importar de novo (sem duplicar)' : 'Importar dados iniciais'}</button>
         {fixas.length > 0 && <><h3>Fixas e referências</h3><Notes notes={fixas} /></>}
       </div>
-      <div className="card"><h2>Sessão</h2><button onClick={() => supabase.auth.signOut()}>Terminar sessão</button></div>
+      <div className="card"><h2>Sessão</h2><button disabled={!online} onClick={() => supabase.auth.signOut()}>Terminar sessão</button>{!online && <p className="dim small">Para não perderes alterações por sincronizar, terminar sessão só com rede.</p>}</div>
     </>
   );
 }
