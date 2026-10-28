@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { useFamily, useOnline, type FamilyData } from './lib/useFamily';
@@ -16,9 +16,13 @@ import { disableLock, enableLock, lockAvailable, lockEnabled, shouldLock, unlock
 import { uuid, type Op, type Table } from './lib/outbox';
 import { readStoredSession } from './lib/session';
 
+const History = lazy(() => import('./Resumo'));
+import InstallSheet, { markSaved } from './Install';
+const Settings = lazy(() => import('./Defs'));
+
 type Tab = 'mes' | 'compras' | 'fixas' | 'resumo' | 'defs';
 type Toast = { kind: 'ok' | 'bad' | 'busy'; text: string } | null;
-const msg = (e: unknown) => {
+export const msg = (e: unknown) => {
   const m = (e as { message?: string })?.message || String(e);
   if (/Failed to fetch|NetworkError/i.test(m)) return 'Sem ligação ao servidor. Nada foi guardado.';
   if (/Invalid login credentials/i.test(m)) return 'Email ou palavra-passe errados.';
@@ -32,7 +36,7 @@ function useTheme() {
   useEffect(() => {
     const mq = matchMedia('(prefers-color-scheme: dark)');
     const apply = () => { const t = THEMES.find((x) => x.id === theme)!; const bg = theme === 'auto' ? (mq.matches ? '#000000' : '#f2f2f7') : t.bg;
-      document.documentElement.dataset.theme = theme; document.querySelector('meta[name=theme-color]')?.setAttribute('content', bg); };
+      document.documentElement.dataset.theme = theme; document.querySelectorAll('meta[name=theme-color]').forEach((m, i) => m.setAttribute('content', theme === 'auto' ? (i ? '#000000' : '#f2f2f7') : bg)); };
     localStorage.setItem('fs-theme2', theme); apply(); mq.addEventListener('change', apply); return () => mq.removeEventListener('change', apply);
   }, [theme]);
   return [theme, setTheme] as const;
@@ -46,7 +50,7 @@ export default function App() {
   useEffect(() => {
     // Sem rede, a renovação do token falha mas a sessão guardada continua válida para ver e pôr alterações em fila.
     supabase.auth.getSession().then(({ data }) => { setSession(data.session ?? (navigator.onLine ? null : readStoredSession())); setReady(true); });
-    const { data: sub } = supabase.auth.onAuthStateChange((e, s) => setSession(s ?? (e !== 'SIGNED_OUT' && !navigator.onLine ? readStoredSession() : null)));
+    const { data: sub } = supabase.auth.onAuthStateChange((e, s) => (e === 'SIGNED_OUT' && navigator.serviceWorker?.controller?.postMessage('logout'), setSession(s ?? (e !== 'SIGNED_OUT' && !navigator.onLine ? readStoredSession() : null))));
     return () => sub.subscription.unsubscribe();
   }, []);
   return (
@@ -61,7 +65,7 @@ export default function App() {
   );
 }
 
-function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
   return <label className="field"><span>{label}</span>{children}{hint && <small className="dim">{hint}</small>}</label>;
 }
 
@@ -206,7 +210,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
         {pendingN > 0 && <span className="warn"> · {pendingN} por sincronizar{syncing && online ? ' (a enviar…)' : ''}</span>}
         <button className={'gear' + (tab === 'defs' ? ' on' : '')} aria-label="Definições" onClick={() => { setTab('defs'); setPanel(''); }}>⚙</button>
       </div>
-      <InstallBanner />
+      <InstallSheet editing={!!panel} />
       {toast && <div className={'banner ' + toast.kind} role={toast.kind === 'bad' ? 'alert' : 'status'}>{toast.text}{toast.kind === 'bad' && <button className="x" aria-label="Fechar" onClick={() => setToast(null)}>×</button>}</div>}
       {failed.length > 0 && <div className="card" role="alert"><h2 className="err">Falhou ({failed.length})</h2>
         <p className="dim small">O servidor não aceitou estas alterações. Continuam guardadas neste aparelho até decidires.</p>
@@ -217,8 +221,8 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
         {tab === 'mes' && <Month {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} />}
         {tab === 'compras' && <Shopping {...ctx} />}
         {tab === 'fixas' && <Bills {...ctx} />}
-        {tab === 'resumo' && <History data={data} refetch={refetch} online={online} extra={extra} />}
-        {tab === 'defs' && <Settings {...ctx} theme={theme} setTheme={setTheme} />}
+        <Suspense fallback={<p className="dim">A carregar…</p>}>{tab === 'resumo' && <History data={data} refetch={refetch} online={online} extra={extra} />}
+        {tab === 'defs' && <Settings {...ctx} theme={theme} setTheme={setTheme} />}</Suspense>
       </main>
       <nav className="tabs" aria-label="Navegação">
         {([['mes', 'mês'], ['compras', 'compras'], ['fixas', 'fixas'], ['resumo', 'resumo']] as [Tab, string][]).map(([k, l]) => (
@@ -229,10 +233,10 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
 }
 
 type Mutate = (label: string, table: Table, kind: Op['kind'], id: string, row?: Record<string, unknown>) => Promise<boolean>;
-type Ctx = { data: FamilyData; run: (l: string, f: () => PromiseLike<{ error: unknown }>) => Promise<boolean>; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; online: boolean; setToast: (t: Toast) => void; extra: Extra };
+export type Ctx = { data: FamilyData; run: (l: string, f: () => PromiseLike<{ error: unknown }>) => Promise<boolean>; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; online: boolean; setToast: (t: Toast) => void; extra: Extra };
 const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras', recurring_bills: 'Conta', budgets: 'Limite' };
 const describeOp = (o: Op) => `${OPN[o.table]}: ${o.kind === 'create' ? 'novo' : o.kind === 'delete' ? 'apagar' : 'alterar'}${o.row.description ? ' «' + o.row.description + '»' : o.row.name ? ' «' + o.row.name + '»' : ''}`;
-function Mark({ s }: { s?: 'pending' | 'failed' }) {
+export function Mark({ s }: { s?: 'pending' | 'failed' }) {
   return s ? <span className={'tag ' + (s === 'failed' ? 'err' : 'warn')}>{s === 'failed' ? 'Falhou' : 'Por sincronizar'}</span> : null;
 }
 type PanelProps = { panel: '' | 'despesa' | 'saldar' | 'fechar' | 'talao'; setPanel: (p: '' | 'despesa' | 'saldar' | 'fechar' | 'talao') => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
@@ -283,7 +287,7 @@ function ExpenseForm({ data, mutate, editing, close, receipt }: Ctx & { editing:
     if (!editing && receipt) { const path = await uploadReceipt(me.family_id, id, receipt.photo); if (path) Object.assign(row, { receipt_path: path }); }
     const ok = editing ? await mutate('Despesa atualizada.', 'expenses', 'patch', id, row)
       : await mutate('Despesa registada.', 'expenses', 'create', id, { id, family_id: me.family_id, ...row, is_deleted: false, created_at: new Date().toISOString() });
-    setBusy(false); if (ok) close();
+    setBusy(false); if (ok) { if (!editing) markSaved(); close(); }
   };
   const remove = async () => {
     if (!editing || !confirm('Retirar esta despesa do saldo? Fica no histórico como apagada.')) return;
@@ -376,7 +380,7 @@ function ExpenseRow({ e, ms, onEdit, s }: { e: Expense; ms: Member[]; onEdit?: (
 }
 
 export const budgetName = (b: Budget, ms: Member[]) => (b.category === '*' ? 'tudo' : b.category) + ' · ' + (b.member_id ? nameOf(ms, b.member_id) : 'casa');
-function Limits({ data }: { data: FamilyData }) {
+export function Limits({ data }: { data: FamilyData }) {
   const u = usage(data.budgets, data.expenses, todayIso().slice(0, 7));
   if (!u.length) return null;
   return (<ul className="list limits" aria-label="Limites do mês">{u.map((x) => (
@@ -384,7 +388,7 @@ function Limits({ data }: { data: FamilyData }) {
       <div className="kv small"><span>{budgetName(x.budget, data.members)}</span><span className="num">{eur(x.spent)} / {eur(x.budget.limit_cents)}{x.level === 'over' ? ' · passou' : ''}</span></div>
       <div className="bar"><i style={{ width: Math.min(100, x.ratio * 100) + '%' }} /></div></li>))}</ul>);
 }
-function LimitsEdit({ data, mutate }: Ctx) {
+export function LimitsEdit({ data, mutate }: Ctx) {
   const ms = data.members, me = data.me!;
   const [f, setF] = useState({ cat: 'Supermercado', who: '', v: '' }); const [err, setErr] = useState('');
   const add = async () => {
@@ -408,7 +412,7 @@ function LimitsEdit({ data, mutate }: Ctx) {
     {err && <p className="err small" role="alert">{err}</p>}</>);
 }
 
-function Notes({ notes }: { notes: FamilyData['notes'] }) {
+export function Notes({ notes }: { notes: FamilyData['notes'] }) {
   return <ul className="list">{notes.map((n) => <li key={n.id} className="li"><span className="grow">{n.title}</span><span className="num">{n.value_text}</span></li>)}</ul>;
 }
 
@@ -497,165 +501,18 @@ function LockScreen({ done }: { done: () => void }) {
   const go = async () => { setErr(''); try { await unlock(); done(); } catch (e) { setErr(msg(e)); } };
   useEffect(() => { go(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (<div className="lockscreen" role="dialog" aria-label="App bloqueada">
-    <img src="./icon-192.png" alt="" />
+    <picture><source srcSet="./icon-192.avif" type="image/avif" /><source srcSet="./icon-192.webp" type="image/webp" /><img src="./icon-192.png" alt="" width="96" height="96" loading="lazy" decoding="async" /></picture>
     <button className="pri wide" onClick={go}>desbloquear com impressão digital</button>
     {err && <p className="err small" role="alert">{err}</p>}
     <button className="link" onClick={async () => { disableLock(); await supabase.auth.signOut(); done(); }}>entrar com email e palavra-passe</button>
   </div>);
 }
-function Lock() {
-  const [on, setOn] = useState(lockEnabled()); const [ok, setOk] = useState<boolean | null>(null); const [err, setErr] = useState('');
-  useEffect(() => { lockAvailable().then(setOk); }, []);
-  const toggle = async () => { setErr(''); try { if (on) disableLock(); else await enableLock('Família Salazar'); setOn(lockEnabled()); } catch (e) { setErr(msg(e)); } };
-  return (<><h3>entrada rápida</h3><ul className="list">
-    <li className="li"><span className="grow">pedir impressão digital ao abrir</span>{ok ? <button className="link" onClick={toggle}>{on ? 'desligar' : 'ligar'}</button> : <span className="dim small">{ok === false ? 'sem leitor neste aparelho' : '…'}</span>}</li>
-    <li className="li dim small">bloqueio só deste aparelho: a sessão continua iniciada; a impressão digital fica no telemóvel e nunca sai dele. Se falhar, entra com email.</li>
-  </ul>{err && <p className="err small" role="alert">{err}</p>}</>);
-}
-function InstallBanner() {
-  const [bip, setBip] = useState(!!window.__bip); const [hide, setHide] = useState(false);
-  useEffect(() => { const f = () => setBip(!!window.__bip); window.addEventListener('fs-bip', f); return () => window.removeEventListener('fs-bip', f); }, []);
-  if (!bip || hide || displayMode() !== 'browser') return null;
-  const go = async () => { const e = window.__bip; if (!e) return; await e.prompt(); await e.userChoice.catch(() => null); window.__bip = null; setBip(false); };
-  return <div className="banner busy" role="status">abriste no browser · <button className="link" onClick={go}>instalar app</button><button className="x" aria-label="Fechar" onClick={() => setHide(true)}>×</button></div>;
-}
-function displayMode(): 'fullscreen' | 'standalone' | 'browser' {
+export function displayMode(): 'fullscreen' | 'standalone' | 'browser' {
   const q = (m: string) => window.matchMedia?.(`(display-mode: ${m})`).matches;
   if (q('fullscreen') || document.fullscreenElement) return 'fullscreen';
   if (q('standalone') || (navigator as Navigator & { standalone?: boolean }).standalone) return 'standalone';
   return 'browser';
 }
-function Screen() {
-  const [mode, setMode] = useState(displayMode());
-  useEffect(() => { const f = () => setMode(displayMode()); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f); }, []);
-  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const [bip, setBip] = useState(!!window.__bip);
-  useEffect(() => { const f = () => setBip(!!window.__bip); window.addEventListener('fs-bip', f); return () => window.removeEventListener('fs-bip', f); }, []);
-  const install = async () => { const e = window.__bip; if (!e) return; await e.prompt(); await e.userChoice.catch(() => null); window.__bip = null; setBip(false); };
-  const canFs = !!document.documentElement.requestFullscreen && !ios;
-  const toggle = async () => { try { if (document.fullscreenElement) { localStorage.setItem('fs-autofs', 'off'); await document.exitFullscreen(); } else { localStorage.removeItem('fs-autofs'); await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } } catch { /* recusado pelo browser */ } setMode(displayMode()); };
-  return (<><h3>ecrã</h3><ul className="list">
-    <li className="li"><span className="grow">modo atual</span><span className="acc">{mode === 'fullscreen' ? 'ecrã inteiro' : mode === 'standalone' ? 'app instalada' : 'browser'}</span></li>
-    {canFs && <li className="li"><span className="grow">ecrã inteiro</span><button className="link" onClick={toggle}>{document.fullscreenElement ? 'sair' : 'ativar'}</button></li>}
-    <li className="li dim small" style={{display:'block',wordBreak:'break-all'}}>
-      diagnóstico · modo: {['fullscreen','standalone','minimal-ui','browser'].find(m => matchMedia('(display-mode: ' + m + ')').matches) ?? '?'}
-      {' · instalada: '}{(matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches || new URLSearchParams(location.search).get('source') === 'pwa' || sessionStorage.getItem('fs-pwa') === '1') ? 'sim' : 'não'}
-      {' · '}{location.href}{' · '}{navigator.userAgent.match(/Chrome\/[\d.]+/)?.[0] ?? ''}
-    </li>
-    {bip && mode === 'browser' && <li className="li"><span className="grow">instalar como app</span><button className="pri" onClick={install}>instalar app</button></li>}
-    {mode === 'browser' && <li className="li dim small">{ios ? 'Safari → Partilhar → Adicionar ao ecrã principal, e abre pelo ícone.' : 'Chrome → ⋮ → Instalar app / Adicionar ao ecrã principal, e abre pelo ícone.'}</li>}
-    {ios && mode === 'standalone' && <li className="li dim small">no iPhone isto já é o máximo: a barra de estado fica por cima da app.</li>}
-  </ul></>);
-}
-function Settings({ data, online, theme, setTheme, mutate, run, state, setToast, extra }: Ctx & { theme: ThemeId; setTheme: (t: ThemeId) => void }) {
-  const [copied, setCopied] = useState(false);
-  const code = data.family!.invite_code;
-  const copy = async () => { try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* sem permissão: o código fica visível */ } };
-  return (
-    <>
-      <h3>tema</h3>
-      <ul className="list themes" role="radiogroup" aria-label="Tema">{THEMES.map((t) => (
-        <li key={t.id}><button role="radio" aria-checked={theme === t.id} className={'li theme' + (theme === t.id ? ' on' : '')} onClick={() => setTheme(t.id)}>
-          <span className="sw" style={{ background: t.bg, boxShadow: `inset -10px 0 0 ${t.acc}` }} /><span className="grow">{t.name}</span>{theme === t.id && <span className="acc">●</span>}</button></li>))}</ul>
-      <Lock />
-      <Screen />
-      <LimitsEdit data={data} mutate={mutate} run={run} state={state} online={online} setToast={setToast} extra={extra} />
-      <Savings data={data} extra={extra} online={online} settings />
-      <NotifySettings data={data} extra={extra} online={online} />
-      <h3>família</h3>
-      <ul className="list">{data.members.map((m) => <li key={m.id} className="li"><span className="grow">{m.display_name}</span>{m.id === data.me!.id && <span className="dim">tu</span>}</li>)}
-        <li className="li"><span className="grow dim">convite</span><span className="num acc">{code}</span><button className="link" onClick={copy}>{copied ? 'copiado' : 'copiar'}</button></li></ul>
-      <h3>sessão</h3>
-      <button className="link" disabled={!online} onClick={() => supabase.auth.signOut()}>terminar sessão</button>{!online && <p className="dim small">só com rede, para não perder o que está por sincronizar</p>}
-    </>
-  );
-}
-
-function Bars({ items, avg, height = 120 }: { items: { label: string; v: number; dim?: boolean }[]; avg?: number; height?: number }) {
-  const max = Math.max(1, ...items.map((i) => i.v), avg ?? 0);
-  const w = 100 / Math.max(1, items.length);
-  return (
-    <svg className="bars" viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" role="img" aria-label="Gráfico de barras">
-      {items.map((i, k) => { const h = (i.v / max) * (height - 4); return <rect key={k} x={k * w + w * 0.15} y={height - h} width={w * 0.7} height={h} className={i.dim ? 'b dimb' : 'b'}><title>{i.label}: {eur(i.v)}</title></rect>; })}
-      {avg != null && <line x1="0" x2="100" y1={height - (avg / max) * (height - 4)} y2={height - (avg / max) * (height - 4)} className="avg" />}
-    </svg>
-  );
-}
-
-function History({ data, refetch, online, extra }: { data: FamilyData; refetch: () => void; online: boolean; extra: Extra }) {
-  const [busy, setBusy] = useState(false);
-  const setOpenMonth = async (ym: string, op: boolean) => {
-    if (!confirm(op ? `Reabrir ${ymLabel(ym)}? Fica em aberto (provisório).` : `Fechar ${ymLabel(ym)}?`)) return;
-    setBusy(true); const { error } = await supabase.rpc('set_month_open', { p_ym: ym, p_open: op }); setBusy(false);
-    if (error) alert('Não foi possível: ' + error.message); else refetch();
-  };
-  const ms = useMemo(() => (data.months ?? []).filter((m) => m && typeof m.ym === 'string').map((m) => ({ ...m, cats: m.cats ?? {}, total_cents: Number(m.total_cents) || 0 })), [data.months]);
-  const [n, setN] = useState(12);
-  const [open, setOpen] = useState<string | null>(null);
-  const a = useMemo(() => averages(ms, n), [ms, n]);
-  const cats = useMemo(() => costByCategory(ms, n), [ms, n]);
-  const v7 = hasV7(extra.payments);
-  const fixedSrc = useMemo(() => v7 ? extra.payments.filter((p) => !p.is_deleted && p.kind !== 'pessoal').map((p) => ({ name: p.name, amount_cents: monthlyEq(p, todayIso()), period: 'mensal' })) : data.bills, [v7, extra.payments, data.bills]);
-  const fv = useMemo(() => fixedVsVariable(fixedSrc, a?.total ?? 0), [fixedSrc, a]);
-  const tips = useMemo(() => savingTips(ms, data.bills, n), [ms, data.bills, n]);
-  const since = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 90); return d.toISOString().slice(0, 10); }, []);
-  const stores = useMemo(() => byStore(data.expenses, since), [data.expenses, since]);
-  const ym = todayIso().slice(0, 7);
-  const pace = useMemo(() => currentPace(ms, data.expenses, todayIso(), n), [ms, data.expenses, n]);
-  const nowM = data.expenses.filter((e) => !e.is_deleted && e.type === 'partilhada' && e.date?.startsWith(ym)).reduce((s, e) => s + e.amount_cents, 0);
-  const notes = data.notes;
-  if (!ms.length) return <p className="dim">sem histórico ainda · corre migration_v3.sql e o seed privado no Supabase</p>;
-  const last = [...ms].sort((x, y) => x.ym.localeCompare(y.ym)).slice(-n);
-  const tr = (t: number | null) => t == null ? <span className="dim">—</span> : <span className={t > 0 ? 'bad' : t < 0 ? 'ok' : 'dim'}>{t > 0 ? '↑' : t < 0 ? '↓' : '='}{Math.abs(t)}%</span>;
-  return (
-    <>
-      <div className="seg" role="radiogroup" aria-label="Período">{[12, 24, 60].map((k) => <button key={k} role="radio" aria-checked={n === k} className={n === k ? 'pri' : ''} onClick={() => setN(k)}>{k}m</button>)}</div>
-      {a && <div className="kpi">
-        <div><span className="big num">{eur(a.total)}</span><span className="dim">/mês · {eur(a.total * 12)}/ano</span></div>
-        <div className="dim small">{eur(a.noExtra)}/mês sem extraordinários · {ymLabel(a.from)}–{ymLabel(a.to)}</div>
-      </div>}
-      <Bars height={70} items={last.map((m) => ({ label: ymLabel(m.ym), v: m.total_cents, dim: m.provisional }))} avg={a?.total} />
-      <div className="axis dim small"><span>{ymLabel(last[0].ym)}</span><span>┄ média</span><span>{ymLabel(last[last.length - 1].ym)}</span></div>
-      <Savings data={data} extra={extra} online={online} spent={pace.total.spent} projected={pace.total.proj} />
-      <Limits data={data} />
-      <h3>este mês · {ymLabel(pace.ym)} · dia {pace.day}/{pace.dim} · vs média {n}m</h3>
-      <p className={pace.total.flag ? 'bad' : ''}><span className="big num">{eur(pace.total.spent)}</span> <span className="dim">até hoje → ritmo </span><span className="num">{eur(pace.total.proj)}</span>{pace.total.avg != null && <span className="dim"> · normal {eur(pace.total.avg)} · </span>}{pace.total.ratio != null && <span className={pace.total.ratio > 1.2 ? 'bad' : pace.total.ratio > 1 ? 'warn' : 'ok'}>{Math.round(pace.total.ratio * 100)}%</span>}</p>
-      {pace.cats.length > 0 ? <table className="t"><tbody>{pace.cats.map((c) => <tr key={c.cat} className={c.flag ? 'bad' : ''}>
-        <td>{c.flag ? '▲ ' : ''}{c.cat}</td><td className="num">{eur(c.spent)}</td><td className="num dim">→{eur(c.proj)}</td><td className="num dim">{c.avg != null ? eur(c.avg) : '—'}</td><td className="num">{c.ratio != null ? <span className={c.ratio > 1.2 ? 'bad' : c.ratio > 1 ? 'warn' : 'ok'}>{Math.round(c.ratio * 100)}%</span> : <span className="dim">novo</span>}</td></tr>)}</tbody></table>
-        : <p className="dim small">ainda sem despesas partilhadas este mês</p>}
-      <p className="dim small">gasto · →projeção ao ritmo atual · normal · % do normal. ▲ = mais de 20% acima do normal.</p>
-
-      <h3>quanto custa · €/mês · €/ano · % · vs {n}m antes</h3>
-      <table className="t"><tbody>{cats.map((c) => <tr key={c.cat}>
-        <td>{c.cat}<i style={{ width: (c.month / cats[0].month) * 100 + '%' }} /></td><td className="num">{eur(c.month)}</td><td className="num dim">{eur(c.year).replace(',00', '')}</td><td className="num dim">{c.pct}%</td><td className="num">{tr(c.trend)}</td></tr>)}</tbody></table>
-
-      {a && fixedSrc.length > 0 && <><h3>fixas vs variáveis</h3>
-        <div className="split"><i style={{ width: Math.min(100, (fv.fixed / Math.max(1, a.total)) * 100) + '%' }} /></div>
-        <div className="kv"><span>fixas <span className="num">{eur(fv.fixed)}</span></span><span>variáveis <span className="num">{eur(fv.variable)}</span></span></div>
-        <p className="dim small">fixas = {v7 ? 'pagamentos conjuntos' : 'contas recorrentes'} com valor{fv.estimated ? ' (inclui estimativas ≈)' : ''}{fv.unknown ? ` · ${fv.unknown} por registar` : ''} · variáveis = média − fixas</p></>}
-
-      {tips.length > 0 && <><h3>onde poupar</h3>
-        <ul className="list">{tips.map((t, k) => <li key={k} className="li"><div className="grow"><div>{t.title}</div><div className="dim small">{t.detail}</div></div>
-          {t.saving != null && <span className="num ok">{t.estimate ? '≈ ' : 'até '}{eur(t.saving)}<span className="dim small">/mês</span></span>}</li>)}</ul>
-        <p className="dim small">≈ = estimativa: voltar à média dos {n} meses. «até» = cortar tudo.</p></>}
-
-      {stores.length > 0 && <><h3>supermercado por loja · 90 dias</h3>
-        <ul className="list">{stores.map(([s, v]) => <li key={s} className="li"><span className="grow">{s}</span><span className="num">{eur(v)}</span></li>)}</ul></>}
-
-      {notes.length > 0 && <><h3>notas</h3><Notes notes={notes} /></>}
-
-      <h3>meses</h3>
-      <ul className="list">{[...ms].sort((x, y) => y.ym.localeCompare(x.ym)).slice(0, n).map((m: HistoryMonth) => (
-        <li key={m.ym} className="li col"><button className="row-btn" aria-expanded={open === m.ym} onClick={() => setOpen(open === m.ym ? null : m.ym)}>
-          <span className="grow">{ymLabel(m.ym)}{m.provisional && <span className="warn"> · em aberto</span>}</span>
-          <span className="num">{eur(m.total_cents)}</span></button>
-          {open === m.ym && <div className="sub dim small">{Object.entries(m.cats).sort((x, y) => y[1] - x[1]).map(([c, v]) => <div key={c} className="kv"><span>{c}</span><span className="num">{eur(v)}</span></div>)}{m.extra_cents > 0 && <div className="kv"><span>dos quais extraordinários</span><span className="num">{eur(m.extra_cents)}</span></div>}{m.note && <p>{m.note}</p>}{!m.provisional && <button className="link" disabled={!online || busy} onClick={() => setOpenMonth(m.ym, true)}>reabrir mês</button>}</div>}
-        </li>))}</ul>
-    </>
-  );
-}
-
-const PER: Record<Bill['period'], string> = { mensal: '/mês', bimestral: '/2 meses', trimestral: '/3 meses', anual: '/ano', 'variável': '/mês' };
 function Bills({ data, mutate, state, extra, online }: Ctx) {
   const [edit, setEdit] = useState<string | null>(null);
   const [val, setVal] = useState('');
@@ -693,3 +550,5 @@ function Bills({ data, mutate, state, extra, online }: Ctx) {
     </>
   );
 }
+
+const PER: Record<Bill['period'], string> = { mensal: '/mês', bimestral: '/2 meses', trimestral: '/3 meses', anual: '/ano', 'variável': '/mês' };
