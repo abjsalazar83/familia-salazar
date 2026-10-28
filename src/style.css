@@ -1,0 +1,36 @@
+:root, [data-theme=dark] { --bg:#0f1115; --card:#171a21; --line:#2a2f3a; --text:#e6e6e6; --dim:#8f97a8; --acc:#7aa2f7; --on-acc:#0f1115; --ok:#9ece6a; --warn:#e0af68; --bad:#f7768e; color-scheme: dark; }
+[data-theme=light] { --bg:#f4f4f2; --card:#fff; --line:#d0d0cb; --text:#1d1f24; --dim:#575d6a; --acc:#2f5fd0; --on-acc:#fff; --ok:#2f6b14; --warn:#8a5a00; --bad:#b3261e; color-scheme: light; }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
+.wrap { max-width: 640px; margin: 0 auto; padding: calc(12px + env(safe-area-inset-top)) 12px calc(92px + env(safe-area-inset-bottom)); }
+.top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+h1 { font-size: 20px; margin: 0; letter-spacing: .5px; }
+h2 { font-size: 16px; margin: 0 0 6px; }
+h3 { font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--dim); margin: 20px 0 8px; font-weight: 600; }
+.num, .code { font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 14px; margin: 0 0 12px; }
+.balance .big { font-size: 32px; font-weight: 600; margin: 2px 0; }
+.dim { color: var(--dim); } .small { font-size: 13px; } .warn { color: var(--warn); } .okt { color: var(--ok); } .err { color: var(--bad); }
+button { min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--text); font: inherit; font-size: 15px; cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+button.pri { background: var(--acc); border-color: var(--acc); color: var(--on-acc); font-weight: 600; }
+button.danger { color: var(--bad); border-color: var(--bad); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.wide { width: 100%; margin: 8px 0; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+.field { display: block; margin: 10px 0; } .field > span, .lab { display: block; font-size: 13px; color: var(--dim); margin: 10px 0 4px; }
+input, select { width: 100%; min-height: 44px; padding: 0 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--text); font: inherit; font-size: 16px; }
+input[type=checkbox] { width: 22px; height: 22px; min-height: 0; accent-color: var(--acc); flex: none; }
+.check { display: flex; gap: 10px; align-items: center; min-height: 44px; cursor: pointer; }
+details { margin-top: 10px; } summary { color: var(--dim); cursor: pointer; min-height: 36px; line-height: 36px; }
+.list { list-style: none; padding: 0 14px; } .li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.list .li:first-child { border-top: 0; } .grow { flex: 1 1 160px; min-width: 0; } .gone { text-decoration: line-through; color: var(--dim); }
+.pill { font-size: 12px; padding: 2px 8px; border: 1px solid currentColor; border-radius: 3px; } .pill.ok { color: var(--ok); } .pill.bad { color: var(--bad); }
+.banner { position: relative; padding: 10px 40px 10px 12px; border: 1px solid; border-radius: 4px; margin: 0 0 10px; }
+.banner.ok { color: var(--ok); } .banner.bad { color: var(--bad); } .banner.busy { color: var(--warn); }
+.banner .x { position: absolute; right: 2px; top: 2px; border: 0; min-height: 36px; color: inherit; }
+.sync { font-size: 12px; margin-bottom: 10px; }
+.code { font-size: 22px; letter-spacing: 3px; padding: 4px 10px; border: 1px dashed var(--line); }
+.tabs { position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 6px max(8px, calc((100vw - 640px)/2)) calc(6px + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--line); }
+.tabs button { border: 0; padding: 0 4px; font-size: 14px; }
