@@ -190,7 +190,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
         {tab === 'inicio' && <Home {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} goShop={() => setTab('compras')} />}
         {tab === 'despesas' && <Expenses {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} />}
         {tab === 'compras' && <Shopping {...ctx} />}
-        {tab === 'historico' && <History data={data} />}
+        {tab === 'historico' && <History data={data} refetch={refetch} online={online} />}
         {tab === 'contas' && <Bills {...ctx} />}
         {tab === 'defs' && <Settings {...ctx} theme={theme} setTheme={setTheme} />}
       </main>
@@ -558,7 +558,13 @@ function Bars({ items, avg, height = 120 }: { items: { label: string; v: number;
   );
 }
 
-function History({ data }: { data: FamilyData }) {
+function History({ data, refetch, online }: { data: FamilyData; refetch: () => void; online: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const setOpenMonth = async (ym: string, op: boolean) => {
+    if (!confirm(op ? `Reabrir ${ymLabel(ym)}? Fica em aberto (provisório).` : `Fechar ${ymLabel(ym)}?`)) return;
+    setBusy(true); const { error } = await supabase.rpc('set_month_open', { p_ym: ym, p_open: op }); setBusy(false);
+    if (error) alert('Não foi possível: ' + error.message); else refetch();
+  };
   const ms = data.months;
   const [n, setN] = useState(12);
   const [open, setOpen] = useState<string | null>(null);
@@ -607,9 +613,9 @@ function History({ data }: { data: FamilyData }) {
       <h3>meses</h3>
       <ul className="list">{[...ms].sort((x, y) => y.ym.localeCompare(x.ym)).slice(0, n).map((m: HistoryMonth) => (
         <li key={m.ym} className="li col"><button className="row-btn" aria-expanded={open === m.ym} onClick={() => setOpen(open === m.ym ? null : m.ym)}>
-          <span className="grow">{ymLabel(m.ym)}{m.provisional && <span className="warn"> · provisório</span>}</span>
+          <span className="grow">{ymLabel(m.ym)}{m.provisional && <span className="warn"> · em aberto</span>}</span>
           <span className="num">{eur(m.total_cents)}</span></button>
-          {open === m.ym && <div className="sub dim small">{Object.entries(m.cats).sort((x, y) => y[1] - x[1]).map(([c, v]) => <div key={c} className="kv"><span>{c}</span><span className="num">{eur(v)}</span></div>)}{m.extra_cents > 0 && <div className="kv"><span>dos quais extraordinários</span><span className="num">{eur(m.extra_cents)}</span></div>}{m.note && <p>{m.note}</p>}</div>}
+          {open === m.ym && <div className="sub dim small">{Object.entries(m.cats).sort((x, y) => y[1] - x[1]).map(([c, v]) => <div key={c} className="kv"><span>{c}</span><span className="num">{eur(v)}</span></div>)}{m.extra_cents > 0 && <div className="kv"><span>dos quais extraordinários</span><span className="num">{eur(m.extra_cents)}</span></div>}{m.note && <p>{m.note}</p>}<button className="link" disabled={!online || busy} onClick={() => setOpenMonth(m.ym, !m.provisional)}>{m.provisional ? 'fechar mês' : 'reabrir mês'}</button></div>}
         </li>))}</ul>
     </>
   );
