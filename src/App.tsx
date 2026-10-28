@@ -5,7 +5,8 @@ import { useFamily, useOnline, type FamilyData } from './lib/useFamily';
 import { calculateHouseholdBalance, splitEqual } from './lib/balance';
 import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
 import { CATS, type Bill, type Budget, type Expense, type HistoryMonth, type Item, type Member } from './lib/types';
-import { useExtra, Savings, Upcoming, CloseMonth, Money, type Extra } from './Plan';
+import { useExtra, Savings, Upcoming, CloseMonth, Money, NotifySettings, PorLancar, type Extra } from './Plan';
+import { hasV7, monthlyEq } from './lib/plan';
 import { averages, byStore, currentPace, costByCategory, fixedVsVariable, monthly, savingTips, ymLabel } from './lib/history';
 import { THEMES, type ThemeId } from './themes';
 import { crossings, usage } from './lib/budget';
@@ -14,7 +15,7 @@ import { disableLock, enableLock, lockAvailable, lockEnabled, shouldLock, unlock
 import { uuid, type Op, type Table } from './lib/outbox';
 import { readStoredSession } from './lib/session';
 
-type Tab = 'inicio' | 'despesas' | 'compras' | 'historico' | 'contas' | 'defs';
+type Tab = 'mes' | 'compras' | 'fixas' | 'resumo' | 'defs';
 type Toast = { kind: 'ok' | 'bad' | 'busy'; text: string } | null;
 const msg = (e: unknown) => {
   const m = (e as { message?: string })?.message || String(e);
@@ -128,14 +129,14 @@ function Onboarding({ online, done }: { online: boolean; done: () => void }) {
 
 function Main({ session, online, theme, setTheme }: { session: Session; online: boolean; theme: ThemeId; setTheme: (t: ThemeId) => void }) {
   const { data, state, queue, status, error, syncedAt, live, syncing, refetch, mutate: qMutate, retry, discard } = useFamily(session);
-  const [tab, setTab] = useState<Tab>('inicio');
+  const [tab, setTab] = useState<Tab>('mes');
   const extra = useExtra(data.family?.id);
   useEffect(() => { if (syncedAt) extra.reload(); }, [syncedAt]); // eslint-disable-line
   const mainRef = useRef<HTMLElement>(null);
   const [swipeDir, setSwipeDir] = useState('');
   const tabRef = useRef(tab); tabRef.current = tab;
   useEffect(() => {
-    const ORDER: Tab[] = ['inicio', 'despesas', 'compras', 'historico', 'contas'];
+    const ORDER: Tab[] = ['mes', 'compras', 'fixas', 'resumo'];
     let x0 = 0, y0 = 0, t0 = 0, ok = false;
     const skip = (el: EventTarget | null) => { for (let n = el as HTMLElement | null; n && n !== document.body; n = n.parentElement) {
       if (n.matches?.('input,textarea,select,[contenteditable],.no-swipe')) return true;
@@ -212,15 +213,14 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
           <button onClick={() => retry(o.opId)} disabled={!online}>Tentar de novo</button>
           <button className="danger" onClick={() => { if (confirm('Descartar esta alteração local? Não foi guardada no servidor.')) discard(o.opId); }}>Descartar</button></li>)}</ul></div>}
       <main ref={mainRef} key={tab} className={'screen ' + swipeDir}>
-        {tab === 'inicio' && <Home {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} goShop={() => setTab('compras')} />}
-        {tab === 'despesas' && <Expenses {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} />}
+        {tab === 'mes' && <Month {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} />}
         {tab === 'compras' && <Shopping {...ctx} />}
-        {tab === 'historico' && <History data={data} refetch={refetch} online={online} extra={extra} />}
-        {tab === 'contas' && <Bills {...ctx} />}
+        {tab === 'fixas' && <Bills {...ctx} />}
+        {tab === 'resumo' && <History data={data} refetch={refetch} online={online} extra={extra} />}
         {tab === 'defs' && <Settings {...ctx} theme={theme} setTheme={setTheme} />}
       </main>
       <nav className="tabs" aria-label="Navegação">
-        {([['inicio', 'início'], ['despesas', 'despesas'], ['compras', 'compras'], ['historico', 'histórico'], ['contas', 'contas']] as [Tab, string][]).map(([k, l]) => (
+        {([['mes', 'mês'], ['compras', 'compras'], ['fixas', 'fixas'], ['resumo', 'resumo']] as [Tab, string][]).map(([k, l]) => (
           <button key={k} aria-current={tab === k ? 'page' : undefined} className={tab === k ? 'pri' : ''} onClick={() => { setSwipeDir(''); setTab(k); setPanel(''); }}>{l}</button>))}
       </nav>
     </>
@@ -371,25 +371,6 @@ function ExpenseRow({ e, ms, onEdit, s }: { e: Expense; ms: Member[]; onEdit?: (
   );
 }
 
-function Home(p: Ctx & PanelProps & { goShop: () => void }) {
-  const { data, panel, setPanel } = p;
-  const recent = data.expenses.filter((e) => !e.is_deleted).slice(0, 5);
-  const pending = data.items.filter((i) => !i.bought).length;
-  return (
-    <>
-      <BalanceCard data={data} state={p.state} />
-      <Limits data={data} />
-      {!panel && <button className="pri wide" onClick={() => p.openExpense(null)}>+ despesa</button>}
-      {!panel && <div className="row links"><button className="link" onClick={() => setPanel('fechar')}>fechar mês</button><button className="link" onClick={() => setPanel('saldar')}>saldar</button><button className="link" onClick={p.goShop}>compras · {pending}</button></div>}
-      {panel === 'despesa' && <ExpenseForm {...p} close={() => setPanel('')} />}
-      {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={p.mutate as never} online={p.online} close={() => setPanel('')} />}
-      {panel === 'saldar' && <SettleForm {...p} close={() => setPanel('')} />}
-      <h3>últimas</h3>
-      {recent.length ? <ul className="list">{recent.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} />)}</ul> : <p className="dim">Ainda não há despesas.</p>}
-    </>
-  );
-}
-
 export const budgetName = (b: Budget, ms: Member[]) => (b.category === '*' ? 'tudo' : b.category) + ' · ' + (b.member_id ? nameOf(ms, b.member_id) : 'casa');
 function Limits({ data }: { data: FamilyData }) {
   const u = usage(data.budgets, data.expenses, todayIso().slice(0, 7));
@@ -427,17 +408,25 @@ function Notes({ notes }: { notes: FamilyData['notes'] }) {
   return <ul className="list">{notes.map((n) => <li key={n.id} className="li"><span className="grow">{n.title}</span><span className="num">{n.value_text}</span></li>)}</ul>;
 }
 
-function Expenses(p: Ctx & PanelProps) {
-  const { data, panel, setPanel, mutate } = p;
-  const [showGone, setShowGone] = useState(false);
-  const list = data.expenses.filter((e) => showGone || !e.is_deleted);
+function Month(p: Ctx & PanelProps) {
+  const { data, panel, setPanel, mutate } = p; const me = data.me!.id;
+  const [showGone, setShowGone] = useState(false); const [who, setWho] = useState<'todas' | 'conjuntas' | 'minhas'>('todas');
+  const day = new Date().getDate(); const edge = day <= 7 || day >= 25;
+  const list = data.expenses.filter((e) => (showGone || !e.is_deleted) && (who === 'todas' || (who === 'conjuntas' ? e.type === 'partilhada' : e.type === 'pessoal' && e.paid_by === me)));
   const confirmS = (id: string) => mutate('Liquidação confirmada.', 'settlements', 'patch', id, { confirmed: true });
   return (
     <>
-      {panel === 'despesa' ? <ExpenseForm {...p} close={() => setPanel('')} /> : <button className="pri wide" onClick={() => p.openExpense(null)}>+ despesa</button>}
+      <BalanceCard data={data} state={p.state} />
+      {!panel && edge && <button className="wide" onClick={() => setPanel('fechar')}>fechar mês</button>}
+      {panel === 'despesa' && !p.editing ? <ExpenseForm {...p} close={() => setPanel('')} /> : !panel && <button className="pri wide" onClick={() => p.openExpense(null)}>+ despesa</button>}
+      {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={mutate as never} online={p.online} close={() => setPanel('')} />}
+      <PorLancar data={data} extra={p.extra} mutate={mutate as never} online={p.online} />
+      <div className="seg" role="radiogroup" aria-label="Filtro">{(['todas', 'conjuntas', 'minhas'] as const).map((k) => <button key={k} role="radio" aria-checked={who === k} className={who === k ? 'pri' : ''} onClick={() => setWho(k)}>{k[0].toUpperCase() + k.slice(1)}</button>)}</div>
+      {panel === 'despesa' && p.editing && <ExpenseForm {...p} close={() => setPanel('')} />}
       <h3>despesas · {list.length}</h3>
-      {list.length ? <ul className="list">{list.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} onEdit={() => p.openExpense(e)} />)}</ul> : <p className="dim">Ainda não há despesas.</p>}
+      {list.length ? <ul className="list">{list.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} onEdit={() => p.openExpense(e)} />)}</ul> : <p className="dim">Sem despesas.</p>}
       <label className="check small dim"><input type="checkbox" checked={showGone} onChange={(e) => setShowGone(e.target.checked)} /> mostrar retiradas</label>
+      {!panel && !edge && <button className="link" onClick={() => setPanel('fechar')}>fechar mês</button>}
       <h3>liquidações</h3>
       {panel === 'saldar' ? <SettleForm {...p} close={() => setPanel('')} /> : <button className="link" onClick={() => setPanel('saldar')}>saldar conta</button>}
       {data.settlements.length > 0 && <ul className="list">{data.settlements.map((s) => (
@@ -564,6 +553,8 @@ function Settings({ data, online, theme, setTheme, mutate, run, state, setToast,
       <Lock />
       <Screen />
       <LimitsEdit data={data} mutate={mutate} run={run} state={state} online={online} setToast={setToast} extra={extra} />
+      <Savings data={data} extra={extra} online={online} settings />
+      <NotifySettings data={data} extra={extra} online={online} />
       <h3>família</h3>
       <ul className="list">{data.members.map((m) => <li key={m.id} className="li"><span className="grow">{m.display_name}</span>{m.id === data.me!.id && <span className="dim">tu</span>}</li>)}
         <li className="li"><span className="grow dim">convite</span><span className="num acc">{code}</span><button className="link" onClick={copy}>{copied ? 'copiado' : 'copiar'}</button></li></ul>
@@ -596,7 +587,9 @@ function History({ data, refetch, online, extra }: { data: FamilyData; refetch: 
   const [open, setOpen] = useState<string | null>(null);
   const a = useMemo(() => averages(ms, n), [ms, n]);
   const cats = useMemo(() => costByCategory(ms, n), [ms, n]);
-  const fv = useMemo(() => fixedVsVariable(data.bills, a?.total ?? 0), [data.bills, a]);
+  const v7 = hasV7(extra.payments);
+  const fixedSrc = useMemo(() => v7 ? extra.payments.filter((p) => !p.is_deleted && p.kind !== 'pessoal').map((p) => ({ name: p.name, amount_cents: monthlyEq(p, todayIso()), period: 'mensal' })) : data.bills, [v7, extra.payments, data.bills]);
+  const fv = useMemo(() => fixedVsVariable(fixedSrc, a?.total ?? 0), [fixedSrc, a]);
   const tips = useMemo(() => savingTips(ms, data.bills, n), [ms, data.bills, n]);
   const since = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 90); return d.toISOString().slice(0, 10); }, []);
   const stores = useMemo(() => byStore(data.expenses, since), [data.expenses, since]);
@@ -617,6 +610,7 @@ function History({ data, refetch, online, extra }: { data: FamilyData; refetch: 
       <Bars height={70} items={last.map((m) => ({ label: ymLabel(m.ym), v: m.total_cents, dim: m.provisional }))} avg={a?.total} />
       <div className="axis dim small"><span>{ymLabel(last[0].ym)}</span><span>┄ média</span><span>{ymLabel(last[last.length - 1].ym)}</span></div>
       <Savings data={data} extra={extra} online={online} spent={pace.total.spent} projected={pace.total.proj} />
+      <Limits data={data} />
       <h3>este mês · {ymLabel(pace.ym)} · dia {pace.day}/{pace.dim} · vs média {n}m</h3>
       <p className={pace.total.flag ? 'bad' : ''}><span className="big num">{eur(pace.total.spent)}</span> <span className="dim">até hoje → ritmo </span><span className="num">{eur(pace.total.proj)}</span>{pace.total.avg != null && <span className="dim"> · normal {eur(pace.total.avg)} · </span>}{pace.total.ratio != null && <span className={pace.total.ratio > 1.2 ? 'bad' : pace.total.ratio > 1 ? 'warn' : 'ok'}>{Math.round(pace.total.ratio * 100)}%</span>}</p>
       {pace.cats.length > 0 ? <table className="t"><tbody>{pace.cats.map((c) => <tr key={c.cat} className={c.flag ? 'bad' : ''}>
@@ -628,10 +622,10 @@ function History({ data, refetch, online, extra }: { data: FamilyData; refetch: 
       <table className="t"><tbody>{cats.map((c) => <tr key={c.cat}>
         <td>{c.cat}<i style={{ width: (c.month / cats[0].month) * 100 + '%' }} /></td><td className="num">{eur(c.month)}</td><td className="num dim">{eur(c.year).replace(',00', '')}</td><td className="num dim">{c.pct}%</td><td className="num">{tr(c.trend)}</td></tr>)}</tbody></table>
 
-      {a && data.bills.length > 0 && <><h3>fixas vs variáveis</h3>
+      {a && fixedSrc.length > 0 && <><h3>fixas vs variáveis</h3>
         <div className="split"><i style={{ width: Math.min(100, (fv.fixed / Math.max(1, a.total)) * 100) + '%' }} /></div>
         <div className="kv"><span>fixas <span className="num">{eur(fv.fixed)}</span></span><span>variáveis <span className="num">{eur(fv.variable)}</span></span></div>
-        <p className="dim small">fixas = contas recorrentes com valor{fv.estimated ? ' (inclui estimativas ≈)' : ''}{fv.unknown ? ` · ${fv.unknown} por registar` : ''} · variáveis = média − fixas</p></>}
+        <p className="dim small">fixas = {v7 ? 'pagamentos conjuntos' : 'contas recorrentes'} com valor{fv.estimated ? ' (inclui estimativas ≈)' : ''}{fv.unknown ? ` · ${fv.unknown} por registar` : ''} · variáveis = média − fixas</p></>}
 
       {tips.length > 0 && <><h3>onde poupar</h3>
         <ul className="list">{tips.map((t, k) => <li key={k} className="li"><div className="grow"><div>{t.title}</div><div className="dim small">{t.detail}</div></div>
@@ -648,7 +642,7 @@ function History({ data, refetch, online, extra }: { data: FamilyData; refetch: 
         <li key={m.ym} className="li col"><button className="row-btn" aria-expanded={open === m.ym} onClick={() => setOpen(open === m.ym ? null : m.ym)}>
           <span className="grow">{ymLabel(m.ym)}{m.provisional && <span className="warn"> · em aberto</span>}</span>
           <span className="num">{eur(m.total_cents)}</span></button>
-          {open === m.ym && <div className="sub dim small">{Object.entries(m.cats).sort((x, y) => y[1] - x[1]).map(([c, v]) => <div key={c} className="kv"><span>{c}</span><span className="num">{eur(v)}</span></div>)}{m.extra_cents > 0 && <div className="kv"><span>dos quais extraordinários</span><span className="num">{eur(m.extra_cents)}</span></div>}{m.note && <p>{m.note}</p>}<button className="link" disabled={!online || busy} onClick={() => setOpenMonth(m.ym, !m.provisional)}>{m.provisional ? 'fechar mês' : 'reabrir mês'}</button></div>}
+          {open === m.ym && <div className="sub dim small">{Object.entries(m.cats).sort((x, y) => y[1] - x[1]).map(([c, v]) => <div key={c} className="kv"><span>{c}</span><span className="num">{eur(v)}</span></div>)}{m.extra_cents > 0 && <div className="kv"><span>dos quais extraordinários</span><span className="num">{eur(m.extra_cents)}</span></div>}{m.note && <p>{m.note}</p>}{!m.provisional && <button className="link" disabled={!online || busy} onClick={() => setOpenMonth(m.ym, true)}>reabrir mês</button>}</div>}
         </li>))}</ul>
     </>
   );
@@ -669,11 +663,12 @@ function Bills({ data, mutate, state, extra, online }: Ctx) {
     if (await mutate('Conta atualizada.', 'recurring_bills', 'patch', b.id, { amount_cents: c, estimate: false })) setEdit(null);
   };
   const up = <Upcoming data={data} extra={extra} online={online} />;
+  if (hasV7(extra.payments)) return up;
   if (!bills.length) return <>{up}<p className="dim">sem contas recorrentes · corre migration_v3.sql e o seed privado no Supabase</p></>;
   return (
     <>
       {up}
-      <h3>contas da casa</h3>
+      <h3>contas da casa (antigas)</h3>
       <div className="kpi"><div><span className="big num">{eur(total)}</span><span className="dim">/mês</span></div>
         <div className="dim">{unknown ? `${unknown} por registar · ` : ''}≈ = estimativa</div></div>
       <ul className="list">{bills.map((b) => (

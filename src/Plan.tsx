@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import type { FamilyData } from './lib/useFamily';
 import { eur, parseCents, centsToInput, todayIso, ptDate } from './lib/money';
-import { closeCalc, closeMessage, halvedLists, mesNome, monthlyEq, nextYm, prevYm, savings, upcoming, type Income, type MonthClose, type Payment, type Period, type Settings } from './lib/plan';
+import { CATS } from './lib/types';
+import { hasV7, monthlyTotals, porLancar, postExpense, closeCalc, closeMessage, halvedLists, mesNome, monthlyEq, nextYm, prevYm, savings, upcoming, type Income, type MonthClose, type Payment, type Period, type Settings } from './lib/plan';
 import { uuid } from './lib/outbox';
 
 export type Extra = { payments: Payment[]; incomes: Income[]; closes: MonthClose[]; settings: Settings | null; missing: boolean; reload: () => Promise<void> };
@@ -47,9 +48,9 @@ function Ring({ ratio, status }: { ratio: number; status: string }) {
 const db = async (f: () => PromiseLike<{ error: unknown }>) => { const { error } = await f(); if (error) throw error; };
 
 /** Rendimentos − despesas reais = sobra; objetivo de poupança com o ritmo do mês. */
-export function Savings({ data, extra, spent, projected, online }: { data: FamilyData; extra: Extra; spent: number; projected: number; online: boolean }) {
+export function Savings({ data, extra, spent = 0, projected = 0, online, settings = false }: { data: FamilyData; extra: Extra; spent?: number; projected?: number; online: boolean; settings?: boolean }) {
   const ym = todayIso().slice(0, 7);
-  const [edit, setEdit] = useState(false); const [vals, setVals] = useState<Record<string, string>>({}); const [goal, setGoal] = useState(''); const [err, setErr] = useState('');
+  const [edit, setEdit] = useState(settings); const [vals, setVals] = useState<Record<string, string>>({}); const [goal, setGoal] = useState(''); const [err, setErr] = useState('');
   const inc = extra.incomes.filter((i) => i.ym === ym);
   const income = inc.reduce((s, i) => s + i.amount_cents, 0);
   const g = extra.settings?.savings_goal_cents ?? 60000;
@@ -63,12 +64,20 @@ export function Savings({ data, extra, spent, projected, online }: { data: Famil
         const ex = inc.find((i) => i.member_id === m.id);
         await db(() => ex ? supabase.from('incomes').update({ amount_cents: c }).eq('id', ex.id) : supabase.from('incomes').insert({ id: uuid(), family_id: fid, member_id: m.id, ym, amount_cents: c }));
       }
-      const gc = parseCents(goal); if (gc == null) throw new Error('objetivo inválido');
+      const gc = parseCents(goal || centsToInput(g)); if (gc == null) throw new Error('objetivo inválido');
       await db(() => supabase.from('family_settings').upsert({ family_id: fid, savings_goal_cents: gc, notify_days: extra.settings?.notify_days ?? 3 }));
-      await extra.reload(); setEdit(false);
+      await extra.reload(); if (!settings) setEdit(false); setErr('Guardado ✓');
     } catch (e) { setErr((e as Error).message); }
   };
   if (extra.missing) return null;
+  if (settings) return (
+    <section className="group"><h3>rendimentos e poupança</h3><div className="card">
+      {data.members.map((m) => <label key={m.id} className="fld"><span>{m.display_name} · líquido {mesNome(ym)}</span>
+        <input inputMode="decimal" className="num" value={vals[m.id] ?? (inc.find((i) => i.member_id === m.id) ? centsToInput(inc.find((i) => i.member_id === m.id)!.amount_cents) : '')} placeholder="0,00" onChange={(e) => setVals({ ...vals, [m.id]: e.target.value })} /></label>)}
+      <label className="fld"><span>objetivo de poupança / mês</span><input inputMode="decimal" className="num" value={goal || centsToInput(g)} onChange={(e) => setGoal(e.target.value)} /></label>
+      {err && <p className={(err.endsWith('✓') ? 'ok' : 'err') + ' small'}>{err}</p>}
+      <button className="pri" disabled={!online} onClick={save}>guardar</button>
+      <p className="dim small">Fica só na base de dados privada da família.</p></div></section>);
   return (
     <section className="group">
       <h3>poupança · {mesNome(ym)}</h3>
@@ -81,7 +90,7 @@ export function Savings({ data, extra, spent, projected, online }: { data: Famil
               <div className="dim small">rendimentos {eur(income)} − despesas {eur(spent)}</div></>}
         </div>
       </div>
-      {!edit ? <button className="link" disabled={!online} onClick={open}>rendimentos e objetivo</button> : <div className="form">
+      {!edit ? <p className="dim small">rendimentos e objetivo em ⚙</p> : <div className="form">
         {data.members.map((m) => <label key={m.id} className="fld"><span>{m.display_name} · líquido {mesNome(ym)}</span>
           <input inputMode="decimal" className="num" value={vals[m.id] ?? ''} placeholder="0,00" onChange={(e) => setVals({ ...vals, [m.id]: e.target.value })} /></label>)}
         <label className="fld"><span>objetivo de poupança / mês</span><input inputMode="decimal" className="num" value={goal} onChange={(e) => setGoal(e.target.value)} /></label>
@@ -92,7 +101,7 @@ export function Savings({ data, extra, spent, projected, online }: { data: Famil
   );
 }
 
-const PERN: Record<Period, string> = { mensal: '/mês', trimestral: '/3 meses', anual: '/ano' };
+const PERN: Record<Period, string> = { mensal: '/mês', bimestral: '/2 meses', trimestral: '/3 meses', anual: '/ano' };
 const notifKey = (p: Payment, d: string) => `fs-notif-${p.id}-${d}`;
 async function notifyDue(items: ReturnType<typeof upcoming>, days: number) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || !('serviceWorker' in navigator)) return;
@@ -107,18 +116,19 @@ async function notifyDue(items: ReturnType<typeof upcoming>, days: number) {
 
 /** Próximos pagamentos e subscrições. */
 export function Upcoming({ data, extra, online }: { data: FamilyData; extra: Extra; online: boolean }) {
+  const v7 = hasV7(extra.payments); const names = Object.fromEntries(data.members.map((m) => [m.id, m.display_name]));
   const today = todayIso();
   const list = useMemo(() => upcoming(extra.payments, today), [extra.payments, today]);
   const days = extra.settings?.notify_days ?? 3;
-  const [perm, setPerm] = useState(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
   const [edit, setEdit] = useState<string | null>(null); const [f, setF] = useState<Record<string, string>>({}); const [err, setErr] = useState('');
-  useEffect(() => { notifyDue(list, days).catch(() => {}); }, [list, days, perm]);
+  useEffect(() => { notifyDue(list, days).catch(() => {}); }, [list, days]);
   if (extra.missing) return <p className="dim small">Pagamentos: falta correr migration_v6.sql no Supabase.</p>;
-  const monthly = extra.payments.reduce((s, p) => s + (monthlyEq(p, today) ?? 0), 0);
+  const tot = monthlyTotals(extra.payments, today); const monthly = tot.conjunta + Object.values(tot.pessoal).reduce((a, b) => a + b, 0);
   const startEdit = (p?: Payment) => {
     setErr(''); setEdit(p?.id ?? 'novo');
     setF({ name: p?.name ?? '', amount: p?.amount_cents != null ? centsToInput(p.amount_cents) : '', period: p?.period ?? 'mensal', next_date: p?.next_date ?? '', payer: p?.payer ?? '', account: p?.account ?? '', note: p?.note ?? '',
-      new_amount: p?.new_amount_cents != null ? centsToInput(p.new_amount_cents) : '', new_period: p?.new_period ?? '', new_from: p?.new_from ?? '' });
+      new_amount: p?.new_amount_cents != null ? centsToInput(p.new_amount_cents) : '', new_period: p?.new_period ?? '', new_from: p?.new_from ?? '',
+      kind: p?.kind ?? 'conjunta', owner: p?.owner_member ?? '', category: p?.category ?? 'Casa' });
   };
   const save = async () => {
     setErr('');
@@ -126,20 +136,23 @@ export function Upcoming({ data, extra, online }: { data: FamilyData; extra: Ext
     try {
       if (!f.name.trim()) throw new Error('falta o nome');
       const row = { name: f.name.trim(), amount_cents: money(f.amount), period: f.period, next_date: f.next_date || null, payer: f.payer.trim() || null, account: f.account.trim() || null, note: f.note.trim() || null,
-        new_amount_cents: money(f.new_amount), new_period: f.new_period || null, new_from: f.new_from || null };
+        new_amount_cents: money(f.new_amount), new_period: f.new_period || null, new_from: f.new_from || null } as Record<string, unknown>;
+      if (v7) { if (f.kind === 'pessoal' && !f.owner) throw new Error('escolhe de quem é'); Object.assign(row, { kind: f.kind, owner_member: f.owner || null, category: f.category, payer: f.owner ? names[f.owner] : row.payer }); }
       await db(() => edit === 'novo' ? supabase.from('payments').insert({ id: uuid(), family_id: data.me!.family_id, ...row }) : supabase.from('payments').update(row).eq('id', edit!));
       await extra.reload(); setEdit(null);
     } catch (e) { setErr((e as Error).message); }
   };
   const remove = async (id: string) => { if (!confirm('Arquivar este pagamento? Fica no histórico da base de dados.')) return; await db(() => supabase.from('payments').update({ is_deleted: true }).eq('id', id)).catch((e) => setErr(e.message)); await extra.reload(); setEdit(null); };
-  const ask = async () => { const r = await Notification.requestPermission(); setPerm(r); };
-  const setDays = async (n: number) => { await db(() => supabase.from('family_settings').upsert({ family_id: data.me!.family_id, savings_goal_cents: extra.settings?.savings_goal_cents ?? 60000, notify_days: n })).catch(() => {}); extra.reload(); };
   const form = <div className="form">
     <label className="fld"><span>nome</span><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
     <div className="row2"><label className="fld"><span>valor</span><input inputMode="decimal" className="num" placeholder="por preencher" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></label>
-      <label className="fld"><span>periodicidade</span><select value={f.period} onChange={(e) => setF({ ...f, period: e.target.value })}><option value="mensal">mensal</option><option value="trimestral">trimestral</option><option value="anual">anual</option></select></label></div>
+      <label className="fld"><span>periodicidade</span><select value={f.period} onChange={(e) => setF({ ...f, period: e.target.value })}><option value="mensal">mensal</option><option value="bimestral">bimestral</option><option value="trimestral">trimestral</option><option value="anual">anual</option></select></label></div>
+    {v7 && <><div className="seg" role="radiogroup" aria-label="Tipo">{(['conjunta', 'pessoal'] as const).map((k) => <button key={k} role="radio" aria-checked={f.kind === k} className={f.kind === k ? 'pri' : ''} onClick={() => setF({ ...f, kind: k })}>{k === 'conjunta' ? 'Conjunta 50/50' : 'Pessoal'}</button>)}</div>
+      <div className="row2"><label className="fld"><span>{f.kind === 'pessoal' ? 'de quem' : 'quem paga'}</span><select value={f.owner} onChange={(e) => setF({ ...f, owner: e.target.value })}><option value="">{f.kind === 'pessoal' ? 'escolher' : 'quem lançar'}</option>{data.members.map((m) => <option key={m.id} value={m.id}>{m.display_name}</option>)}</select></label>
+        <label className="fld"><span>categoria</span><select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{CATS.map((c) => <option key={c}>{c}</option>)}</select></label></div>
+      <p className="dim small">{f.kind === 'pessoal' ? 'Pessoal: conta no teu mês e na poupança, não entra no acerto.' : 'Conjunta: lançada como partilhada 50/50 e entra no acerto.'}</p></>}
     <div className="row2"><label className="fld"><span>próxima data</span><input type="date" value={f.next_date} onChange={(e) => setF({ ...f, next_date: e.target.value })} /></label>
-      <label className="fld"><span>quem paga</span><input value={f.payer} onChange={(e) => setF({ ...f, payer: e.target.value })} /></label></div>
+      {!v7 && <label className="fld"><span>quem paga</span><input value={f.payer} onChange={(e) => setF({ ...f, payer: e.target.value })} /></label>}</div>
     <label className="fld"><span>conta / cartão</span><input value={f.account} placeholder="ex.: Visa …1234" onChange={(e) => setF({ ...f, account: e.target.value })} /></label>
     <label className="fld"><span>nota</span><input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
     <div className="dim small">mudança de preço (opcional)</div>
@@ -151,23 +164,19 @@ export function Upcoming({ data, extra, online }: { data: FamilyData; extra: Ext
       {edit !== 'novo' && <button className="danger" onClick={() => remove(edit!)}>arquivar</button>}</div></div>;
   return (
     <section className="group">
+      <div className="kpi"><Money c={monthly} className="big" /><span className="dim"> /mês</span>
+        {v7 && <div className="dim small">conjunto {eur(tot.conjunta)}{Object.entries(tot.pessoal).map(([k, v]) => ` · ${names[k] ?? '?'} ${eur(v)}`).join('')}</div>}</div>
       <h3>próximos</h3>
-      <div className="kpi"><Money c={monthly} className="big" /><span className="dim"> /mês em pagamentos</span></div>
       <ul className="list ios">{list.map((u, i) => (
         <li key={u.p.id} className={'li col in' + (u.soon ? ' soon' : '')} style={{ animationDelay: Math.min(i, 10) * 25 + 'ms' }}>
           <button className="row-btn" onClick={() => (edit === u.p.id ? setEdit(null) : startEdit(u.p))}>
-            <span className="grow"><span className="t2">{u.p.name}</span><span className="dim small block">{[u.date ? ptDate(u.date) : 'data por preencher', u.p.payer, u.p.account].filter(Boolean).join(' · ')}{u.changes ? ` · novo preço a ${ptDate(u.p.new_from!)}` : ''}</span></span>
+            <span className="grow"><span className="t2">{u.p.name}</span><span className="dim small block">{[u.date ? ptDate(u.date) : 'data por preencher', v7 ? (u.p.kind === 'pessoal' ? 'pessoal ' + (names[u.p.owner_member ?? ''] ?? '') : 'conjunta') : u.p.payer, u.p.account].filter(Boolean).join(' · ')}{u.changes ? ` · novo preço a ${ptDate(u.p.new_from!)}` : ''}</span></span>
             <span className="r"><span className="num">{u.amount != null ? eur(u.amount) : <span className="warn small">valor?</span>}</span>
               <span className={'small block ' + (u.soon ? 'warn' : 'dim')}>{u.days == null ? '' : u.days === 0 ? 'hoje' : `${u.days} dia${u.days > 1 ? 's' : ''}`}{u.amount != null && <span className="dim"> {PERN[termsAt2(u)]}</span>}</span></span>
           </button>
           {edit === u.p.id && form}
         </li>))}</ul>
       {edit === 'novo' ? form : <button className="link" disabled={!online} onClick={() => startEdit()}>adicionar pagamento</button>}
-      <div className="row small dim notif">
-        {perm === 'granted' ? <span>🔔 avisos {days} dia{days > 1 ? 's' : ''} antes</span> : perm === 'unsupported' ? <span>avisos indisponíveis neste browser</span> : <button className="link" onClick={ask}>ativar avisos</button>}
-        {perm === 'granted' && <select aria-label="Dias de antecedência" value={days} onChange={(e) => setDays(Number(e.target.value))}>{[1, 2, 3, 5, 7].map((n) => <option key={n} value={n}>{n} d</option>)}</select>}
-      </div>
-      {perm === 'granted' && <p className="dim small">O aviso aparece quando a app é aberta (ou sincroniza) dentro do prazo.</p>}
     </section>
   );
 }
@@ -229,4 +238,48 @@ export function CloseMonth({ data, extra, mutate, online, close }: { data: Famil
       <p className="dim small">A app não envia nada: tu fazes o MB WAY e partilhas a mensagem.</p>
     </section>
   );
+}
+
+/** Notificações e antecedência (em ⚙). */
+export function NotifySettings({ data, extra, online }: { data: FamilyData; extra: Extra; online: boolean }) {
+  const [perm, setPerm] = useState(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
+  const days = extra.settings?.notify_days ?? 3;
+  if (extra.missing) return null;
+  const ask = async () => setPerm(await Notification.requestPermission());
+  const setDays = async (n: number) => { await db(() => supabase.from('family_settings').upsert({ family_id: data.me!.family_id, savings_goal_cents: extra.settings?.savings_goal_cents ?? 60000, notify_days: n })).catch(() => {}); extra.reload(); };
+  return (<><h3>avisos de pagamentos</h3><ul className="list">
+    <li className="li"><span className="grow">notificações</span>{perm === 'granted' ? <span className="ok">ativas</span> : perm === 'unsupported' ? <span className="dim small">indisponíveis</span> : <button onClick={ask}>ativar</button>}</li>
+    <li className="li"><span className="grow">antecedência</span><select style={{ width: 'auto' }} disabled={!online} aria-label="Dias de antecedência" value={days} onChange={(e) => setDays(Number(e.target.value))}>{[1, 2, 3, 5, 7].map((n) => <option key={n} value={n}>{n} dia{n > 1 ? 's' : ''}</option>)}</select></li>
+  </ul><p className="dim small">O aviso aparece quando a app é aberta (ou sincroniza) dentro do prazo.</p></>);
+}
+
+type PostMutate = (label: string, table: 'expenses', kind: 'create', id: string, row: Record<string, unknown>) => Promise<boolean>;
+/** «Por lançar»: ocorrências vencidas dos pagamentos fixos; um toque cria a despesa (conjunta 50/50 ou pessoal). */
+export function PorLancar({ data, extra, mutate, online }: { data: FamilyData; extra: Extra; mutate: PostMutate; online: boolean }) {
+  const today = todayIso();
+  const items = useMemo(() => porLancar(extra.payments, data.expenses as never, today), [extra.payments, data.expenses, today]);
+  const [vals, setVals] = useState<Record<string, string>>({}); const [busy, setBusy] = useState(''); const [err, setErr] = useState('');
+  const names = Object.fromEntries(data.members.map((m) => [m.id, m.display_name]));
+  if (!items.length) return null;
+  const key = (x: { p: Payment; date: string }) => x.p.id + '|' + x.date;
+  const post = async (x: (typeof items)[number]) => {
+    setErr(''); const v = vals[key(x)]; const amount = v != null && v.trim() !== '' ? parseCents(v) : x.amount;
+    if (!amount || amount <= 0) return setErr(`Indica o valor de ${x.p.name}.`);
+    setBusy(key(x)); const id = uuid();
+    const row = postExpense(x.p, x.date, amount, data.members.map((m) => m.id), data.me!.id);
+    const ok = await mutate(`${x.p.name} lançado.`, 'expenses', 'create', id, { id, family_id: data.me!.family_id, ...row, is_deleted: false, created_at: new Date().toISOString() });
+    if (ok && online) await supabase.from('payments').update({ last_posted: x.date, expense_id: id }).eq('id', x.p.id).then(() => extra.reload(), () => {});
+    setBusy('');
+  };
+  const skip = async (x: (typeof items)[number]) => {
+    if (!confirm(`Marcar ${x.p.name} de ${ptDate(x.date)} como já registado (sem criar despesa)?`)) return;
+    await supabase.from('payments').update({ last_posted: x.date }).eq('id', x.p.id).then(() => extra.reload(), () => setErr('Sem ligação.'));
+  };
+  return (<section className="group"><h3>por lançar · {items.length}</h3>
+    <ul className="list ios">{items.map((x, i) => <li key={key(x)} className="li in" style={{ animationDelay: i * 30 + 'ms' }}>
+      <span className="grow"><span className="t2">{x.p.name}</span><span className="dim small block">{ptDate(x.date)} · {x.p.kind === 'pessoal' ? 'pessoal ' + (names[x.p.owner_member ?? ''] ?? '') : 'conjunta 50/50'}</span></span>
+      <input className="num amt" inputMode="decimal" aria-label={`Valor de ${x.p.name}`} placeholder="valor" value={vals[key(x)] ?? (x.amount != null ? centsToInput(x.amount) : '')} onChange={(e) => setVals({ ...vals, [key(x)]: e.target.value })} />
+      <button className="pri" disabled={busy === key(x)} onClick={() => post(x)}>lançar</button>
+      <button className="dim" aria-label="Já registado" title="já registado" disabled={!online} onClick={() => skip(x)}>✕</button>
+    </li>)}</ul>{err && <p className="err small">{err}</p>}</section>);
 }

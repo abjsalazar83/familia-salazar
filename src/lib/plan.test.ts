@@ -37,3 +37,24 @@ describe('poupança', () => {
     expect(savings(300000, 100000, 200000, 60000).status).toBe('ok');
   });
 });
+import { porLancar, postExpense, hasV7, monthlyTotals } from './plan';
+describe('por lançar', () => {
+  const base = P({ id: 'p1', next_date: '2026-09-15', kind: 'conjunta', category: 'Casa', owner_member: 'a', last_posted: null });
+  it('só depois da migração', () => { expect(porLancar([P({})], [], '2026-10-28')).toEqual([]); expect(hasV7([base])).toBe(true); });
+  it('ocorrências vencidas nos últimos 40 dias, sem repetir', () => {
+    expect(porLancar([base], [], '2026-10-28').map((x) => x.date)).toEqual(['2026-09-15', '2026-10-15'].filter((d) => d > '2026-09-18'));
+    expect(porLancar([base], [{ payment_id: 'p1', payment_due: '2026-10-15', is_deleted: false }], '2026-10-28')).toEqual([]);
+    expect(porLancar([{ ...base, last_posted: '2026-10-15' }], [], '2026-10-28')).toEqual([]);
+    expect(porLancar([{ ...base, next_date: '2027-01-08' }], [], '2026-10-28')).toEqual([]);
+  });
+  it('conjunta 50/50 entra no acerto; pessoal só do dono', () => {
+    const c = postExpense(base, '2026-10-15', 1001, ['a', 'b'], 'b');
+    expect(c).toMatchObject({ type: 'partilhada', paid_by: 'a', shares: { a: 500, b: 501 }, payment_id: 'p1', payment_due: '2026-10-15' });
+    const s = postExpense({ ...base, kind: 'pessoal', owner_member: 'b' }, '2026-10-15', 900, ['a', 'b'], 'a');
+    expect(s).toMatchObject({ type: 'pessoal', paid_by: 'b', shares: {} });
+  });
+  it('totais', () => {
+    const t = monthlyTotals([base, { ...base, id: 'p2', kind: 'pessoal', owner_member: 'a', amount_cents: 3000, period: 'trimestral' }], '2026-10-28');
+    expect(t).toEqual({ conjunta: 1000, pessoal: { a: 1000 } });
+  });
+});

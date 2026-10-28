@@ -72,9 +72,9 @@
       ]
     },
     {
-      "name": "Histórico",
-      "short_name": "Histórico",
-      "url": "./?acao=historico",
+      "name": "Resumo",
+      "short_name": "Resumo",
+      "url": "./?acao=resumo",
       "icons": [
         {
           "src": "sc-historico.png",
