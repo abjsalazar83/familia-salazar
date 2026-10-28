@@ -101,3 +101,24 @@ export function byStore(exps: { description: string; category: string; amount_ce
   }
   return Object.entries(t).sort((a, b) => b[1] - a[1]);
 }
+
+export type PaceRow = { cat: string; spent: number; avg: number | null; proj: number; ratio: number | null; flag: boolean };
+/** Mês corrente (em curso) vs média dos últimos n meses fechados: gasto até hoje, projeção ao ritmo atual. */
+export function currentPace(ms: HistoryMonth[], exps: { category: string; amount_cents: number; date: string; is_deleted: boolean; type?: string }[], today: string, n = 12) {
+  const ym = today.slice(0, 7), day = Number(today.slice(8, 10));
+  const dim = new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0).getDate();
+  const last = closed(ms).filter((m) => m.ym < ym).slice(-n);
+  const avgOf = (f: (m: HistoryMonth) => number) => (last.length ? Math.round(last.reduce((s, m) => s + f(m), 0) / last.length) : null);
+  const by: Record<string, number> = {};
+  for (const e of exps) if (!e.is_deleted && e.type !== 'pessoal' && e.date.startsWith(ym)) by[e.category] = (by[e.category] ?? 0) + e.amount_cents;
+  const proj = (v: number) => Math.round((v / Math.max(1, day)) * dim);
+  const row = (cat: string, spent: number, avg: number | null): PaceRow => {
+    const p = proj(spent); const ratio = avg ? p / avg : null;
+    return { cat, spent, avg, proj: p, ratio, flag: ratio != null && ratio > 1.2 && p - (avg ?? 0) >= 2000 };
+  };
+  const spent = Object.values(by).reduce((s, v) => s + v, 0);
+  const total = row('total', spent, avgOf((m) => m.total_cents));
+  const cats = Object.entries(by).map(([c, v]) => row(c, v, last.some((m) => c in m.cats) ? avgOf((m) => m.cats[c] ?? 0) : null))
+    .sort((a, b) => (b.ratio ?? 0) - (a.ratio ?? 0) || b.spent - a.spent);
+  return { ym, day, dim, total, cats };
+}

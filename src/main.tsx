@@ -23,3 +23,9 @@ window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); wind
 window.addEventListener('appinstalled', () => { window.__bip = null; window.dispatchEvent(new Event('fs-bip')); });
 
 if (new URLSearchParams(location.search).get('source') === 'pwa') sessionStorage.setItem('fs-pwa', '1');
+
+// Sem zoom: bloquear pinça (iOS gesture*, Android multi-toque) e duplo toque.
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (e) => { if (e.touches.length > 1 || ((e as unknown as { scale?: number }).scale ?? 1) !== 1) e.preventDefault(); }, { passive: false });
+let lastTouch = 0;
+document.addEventListener('touchend', (e) => { const t = Date.now(); if (t - lastTouch < 300 && !(e.target as HTMLElement).closest('input,textarea,select')) e.preventDefault(); lastTouch = t; }, { passive: false });

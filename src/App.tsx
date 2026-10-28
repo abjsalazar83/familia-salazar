@@ -5,7 +5,7 @@ import { useFamily, useOnline, type FamilyData } from './lib/useFamily';
 import { calculateHouseholdBalance, splitEqual } from './lib/balance';
 import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
 import { CATS, type Bill, type Budget, type Expense, type HistoryMonth, type Item, type Member } from './lib/types';
-import { averages, byStore, costByCategory, fixedVsVariable, monthly, savingTips, ymLabel } from './lib/history';
+import { averages, byStore, currentPace, costByCategory, fixedVsVariable, monthly, savingTips, ymLabel } from './lib/history';
 import { THEMES, type ThemeId } from './themes';
 import { crossings, usage } from './lib/budget';
 import { actionTab } from './lib/actions';
@@ -575,6 +575,7 @@ function History({ data, refetch, online }: { data: FamilyData; refetch: () => v
   const since = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 90); return d.toISOString().slice(0, 10); }, []);
   const stores = useMemo(() => byStore(data.expenses, since), [data.expenses, since]);
   const ym = todayIso().slice(0, 7);
+  const pace = useMemo(() => currentPace(ms, data.expenses, todayIso(), n), [ms, data.expenses, n]);
   const nowM = data.expenses.filter((e) => !e.is_deleted && e.type === 'partilhada' && e.date.startsWith(ym)).reduce((s, e) => s + e.amount_cents, 0);
   const notes = data.notes;
   if (!ms.length) return <p className="dim">sem histórico ainda · corre migration_v3.sql e o seed privado no Supabase</p>;
@@ -589,7 +590,12 @@ function History({ data, refetch, online }: { data: FamilyData; refetch: () => v
       </div>}
       <Bars height={70} items={last.map((m) => ({ label: ymLabel(m.ym), v: m.total_cents, dim: m.provisional }))} avg={a?.total} />
       <div className="axis dim small"><span>{ymLabel(last[0].ym)}</span><span>┄ média</span><span>{ymLabel(last[last.length - 1].ym)}</span></div>
-      {nowM > 0 && a && <p className="small">este mês na app: <span className="num">{eur(nowM)}</span> <span className="dim">· {Math.round((nowM / a.total) * 100)}% da média</span></p>}
+      <h3>este mês · {ymLabel(pace.ym)} · dia {pace.day}/{pace.dim} · vs média {n}m</h3>
+      <p className={pace.total.flag ? 'bad' : ''}><span className="big num">{eur(pace.total.spent)}</span> <span className="dim">até hoje → ritmo </span><span className="num">{eur(pace.total.proj)}</span>{pace.total.avg != null && <span className="dim"> · normal {eur(pace.total.avg)} · </span>}{pace.total.ratio != null && <span className={pace.total.ratio > 1.2 ? 'bad' : pace.total.ratio > 1 ? 'warn' : 'ok'}>{Math.round(pace.total.ratio * 100)}%</span>}</p>
+      {pace.cats.length > 0 ? <table className="t"><tbody>{pace.cats.map((c) => <tr key={c.cat} className={c.flag ? 'bad' : ''}>
+        <td>{c.flag ? '▲ ' : ''}{c.cat}</td><td className="num">{eur(c.spent)}</td><td className="num dim">→{eur(c.proj)}</td><td className="num dim">{c.avg != null ? eur(c.avg) : '—'}</td><td className="num">{c.ratio != null ? <span className={c.ratio > 1.2 ? 'bad' : c.ratio > 1 ? 'warn' : 'ok'}>{Math.round(c.ratio * 100)}%</span> : <span className="dim">novo</span>}</td></tr>)}</tbody></table>
+        : <p className="dim small">ainda sem despesas partilhadas este mês</p>}
+      <p className="dim small">gasto · →projeção ao ritmo atual · normal · % do normal. ▲ = mais de 20% acima do normal.</p>
 
       <h3>quanto custa · €/mês · €/ano · % · vs {n}m antes</h3>
       <table className="t"><tbody>{cats.map((c) => <tr key={c.cat}>
