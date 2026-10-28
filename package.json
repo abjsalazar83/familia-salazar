@@ -1,0 +1,29 @@
+{
+  "name": "familia-salazar",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "icons": "node scripts/icons.mjs",
+    "dev": "node scripts/icons.mjs && vite",
+    "build": "node scripts/icons.mjs && tsc && vite build",
+    "test": "vitest run",
+    "preview": "vite preview"
+  },
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.109.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "vitest": "^2.1.9"
+  },
+  "private": true
+}
