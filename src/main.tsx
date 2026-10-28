@@ -21,3 +21,5 @@ type BIP = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome:
 declare global { interface Window { __bip?: BIP | null } }
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); window.__bip = e as BIP; window.dispatchEvent(new Event('fs-bip')); });
 window.addEventListener('appinstalled', () => { window.__bip = null; window.dispatchEvent(new Event('fs-bip')); });
+
+if (new URLSearchParams(location.search).get('source') === 'pwa') sessionStorage.setItem('fs-pwa', '1');

@@ -515,6 +515,11 @@ function Screen() {
   return (<><h3>ecrã</h3><ul className="list">
     <li className="li"><span className="grow">modo atual</span><span className="acc">{mode === 'fullscreen' ? 'ecrã inteiro' : mode === 'standalone' ? 'app instalada' : 'browser'}</span></li>
     {canFs && <li className="li"><span className="grow">ecrã inteiro</span><button className="link" onClick={toggle}>{document.fullscreenElement ? 'sair' : 'ativar'}</button></li>}
+    <li className="li dim small" style={{display:'block',wordBreak:'break-all'}}>
+      diagnóstico · modo: {['fullscreen','standalone','minimal-ui','browser'].find(m => matchMedia('(display-mode: ' + m + ')').matches) ?? '?'}
+      {' · instalada: '}{(matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches || new URLSearchParams(location.search).get('source') === 'pwa' || sessionStorage.getItem('fs-pwa') === '1') ? 'sim' : 'não'}
+      {' · '}{location.href}{' · '}{navigator.userAgent.match(/Chrome\/[\d.]+/)?.[0] ?? ''}
+    </li>
     {bip && mode === 'browser' && <li className="li"><span className="grow">instalar como app</span><button className="pri" onClick={install}>instalar app</button></li>}
     {mode === 'browser' && <li className="li dim small">{ios ? 'Safari → Partilhar → Adicionar ao ecrã principal, e abre pelo ícone.' : 'Chrome → ⋮ → Instalar app / Adicionar ao ecrã principal, e abre pelo ícone.'}</li>}
     {ios && mode === 'standalone' && <li className="li dim small">no iPhone isto já é o máximo: a barra de estado fica por cima da app.</li>}
