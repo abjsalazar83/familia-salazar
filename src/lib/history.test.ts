@@ -38,3 +38,15 @@ describe('quanto custa / poupar', () => {
     expect(byStore([{ description: 'LojaA x', category: 'Supermercado', amount_cents: 100, date: '2026-10-01', is_deleted: false }, { description: 'lojaa', category: 'Supermercado', amount_cents: 50, date: '2026-10-02', is_deleted: false }, { description: 'LojaB', category: 'Supermercado', amount_cents: 70, date: '2026-01-01', is_deleted: false }], '2026-09-01')).toEqual([['lojaa', 150]]);
   });
 });
+
+import { currentPace } from './history';
+describe('currentPace robusto', () => {
+  it('dados vazios, dia 1, campos nulos', () => {
+    const r = currentPace([], [], '2026-11-01');
+    expect(r.total.spent).toBe(0); expect(r.total.ratio).toBeNull();
+    const m: any = { id: '1', ym: '2026-09', total_cents: 0, extra_cents: 0, cats: null, provisional: false, note: null };
+    const e: any = [{ category: null, amount_cents: 500, date: '2026-11-01', is_deleted: false }, { category: 'X', amount_cents: 1, date: null, is_deleted: false }];
+    const r2 = currentPace([m], e, '2026-11-01');
+    expect(r2.cats[0].cat).toBe('Outros'); expect(Number.isFinite(r2.total.proj)).toBe(true);
+  });
+});

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { useFamily, useOnline, type FamilyData } from './lib/useFamily';
@@ -127,6 +127,27 @@ function Onboarding({ online, done }: { online: boolean; done: () => void }) {
 function Main({ session, online, theme, setTheme }: { session: Session; online: boolean; theme: ThemeId; setTheme: (t: ThemeId) => void }) {
   const { data, state, queue, status, error, syncedAt, live, syncing, refetch, mutate: qMutate, retry, discard } = useFamily(session);
   const [tab, setTab] = useState<Tab>('inicio');
+  const mainRef = useRef<HTMLElement>(null);
+  const [swipeDir, setSwipeDir] = useState('');
+  const tabRef = useRef(tab); tabRef.current = tab;
+  useEffect(() => {
+    const ORDER: Tab[] = ['inicio', 'despesas', 'compras', 'historico', 'contas'];
+    let x0 = 0, y0 = 0, t0 = 0, ok = false;
+    const skip = (el: EventTarget | null) => { for (let n = el as HTMLElement | null; n && n !== document.body; n = n.parentElement) {
+      if (n.matches?.('input,textarea,select,[contenteditable],.no-swipe')) return true;
+      if (n.scrollWidth > n.clientWidth + 2 && /(auto|scroll)/.test(getComputedStyle(n).overflowX)) return true; } return false; };
+    const start = (e: TouchEvent) => { const p = e.touches[0]; ok = e.touches.length === 1 && p.clientX > 30 && p.clientX < innerWidth - 30 && p.clientY < innerHeight - 40 && !skip(e.target); if (!ok) return; x0 = p.clientX; y0 = p.clientY; t0 = Date.now(); };
+    const end = (e: TouchEvent) => {
+      if (!ok) return; ok = false; const t = e.changedTouches[0]; const dx = t.clientX - x0, dy = t.clientY - y0;
+      if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8 || Date.now() - t0 > 700) return;
+      const i = ORDER.indexOf(tabRef.current); if (i < 0) return;
+      const j = dx < 0 ? i + 1 : i - 1; if (j < 0 || j >= ORDER.length) return;
+      setSwipeDir(dx < 0 ? 'from-right' : 'from-left'); setTab(ORDER[j]); setPanel('');
+    };
+    const el = mainRef.current?.parentElement ?? document.body;
+    el.addEventListener('touchstart', start, { passive: true }); el.addEventListener('touchend', end, { passive: true });
+    return () => { el.removeEventListener('touchstart', start); el.removeEventListener('touchend', end); };
+  }, []);
   const [panel, setPanel] = useState<'' | 'despesa' | 'saldar'>('');
   const [editing, setEditing] = useState<Expense | null>(null);
   const [toast, setToast] = useState<Toast>(null);
@@ -186,7 +207,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
         <ul className="list">{failed.map((o) => <li key={o.opId} className="li"><div className="grow"><div>{describeOp(o)}</div><div className="err small">{msg(o.error)}</div></div>
           <button onClick={() => retry(o.opId)} disabled={!online}>Tentar de novo</button>
           <button className="danger" onClick={() => { if (confirm('Descartar esta alteração local? Não foi guardada no servidor.')) discard(o.opId); }}>Descartar</button></li>)}</ul></div>}
-      <main>
+      <main ref={mainRef} key={tab} className={'screen ' + swipeDir}>
         {tab === 'inicio' && <Home {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} goShop={() => setTab('compras')} />}
         {tab === 'despesas' && <Expenses {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} />}
         {tab === 'compras' && <Shopping {...ctx} />}
@@ -196,7 +217,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
       </main>
       <nav className="tabs" aria-label="Navegação">
         {([['inicio', 'início'], ['despesas', 'despesas'], ['compras', 'compras'], ['historico', 'histórico'], ['contas', 'contas']] as [Tab, string][]).map(([k, l]) => (
-          <button key={k} aria-current={tab === k ? 'page' : undefined} className={tab === k ? 'pri' : ''} onClick={() => { setTab(k); setPanel(''); }}>{l}</button>))}
+          <button key={k} aria-current={tab === k ? 'page' : undefined} className={tab === k ? 'pri' : ''} onClick={() => { setSwipeDir(''); setTab(k); setPanel(''); }}>{l}</button>))}
       </nav>
     </>
   );
@@ -565,7 +586,7 @@ function History({ data, refetch, online }: { data: FamilyData; refetch: () => v
     setBusy(true); const { error } = await supabase.rpc('set_month_open', { p_ym: ym, p_open: op }); setBusy(false);
     if (error) alert('Não foi possível: ' + error.message); else refetch();
   };
-  const ms = data.months;
+  const ms = useMemo(() => (data.months ?? []).filter((m) => m && typeof m.ym === 'string').map((m) => ({ ...m, cats: m.cats ?? {}, total_cents: Number(m.total_cents) || 0 })), [data.months]);
   const [n, setN] = useState(12);
   const [open, setOpen] = useState<string | null>(null);
   const a = useMemo(() => averages(ms, n), [ms, n]);
@@ -576,7 +597,7 @@ function History({ data, refetch, online }: { data: FamilyData; refetch: () => v
   const stores = useMemo(() => byStore(data.expenses, since), [data.expenses, since]);
   const ym = todayIso().slice(0, 7);
   const pace = useMemo(() => currentPace(ms, data.expenses, todayIso(), n), [ms, data.expenses, n]);
-  const nowM = data.expenses.filter((e) => !e.is_deleted && e.type === 'partilhada' && e.date.startsWith(ym)).reduce((s, e) => s + e.amount_cents, 0);
+  const nowM = data.expenses.filter((e) => !e.is_deleted && e.type === 'partilhada' && e.date?.startsWith(ym)).reduce((s, e) => s + e.amount_cents, 0);
   const notes = data.notes;
   if (!ms.length) return <p className="dim">sem histórico ainda · corre migration_v3.sql e o seed privado no Supabase</p>;
   const last = [...ms].sort((x, y) => x.ym.localeCompare(y.ym)).slice(-n);

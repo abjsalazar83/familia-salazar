@@ -1,10 +1,14 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { ErrorBoundary } from './ErrorBoundary';
 import './style.css';
-createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
+createRoot(document.getElementById('root')!).render(<StrictMode><ErrorBoundary><App /></ErrorBoundary></StrictMode>);
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  addEventListener('load', () => navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js'));
+  addEventListener('load', () => navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').then((r) => r.update()).catch(() => {}));
+  // Nova versão do service worker assumiu o controlo: recarregar uma única vez para não misturar versões.
+  const had = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (had) reloadOnce('sw-' + Date.now().toString().slice(0, -5)); });
 }
 
 // Android: se o WebAPK ignorou display=fullscreen, pede ecrã inteiro no primeiro toque (Fullscreen API).
@@ -24,8 +28,11 @@ window.addEventListener('appinstalled', () => { window.__bip = null; window.disp
 
 if (new URLSearchParams(location.search).get('source') === 'pwa') sessionStorage.setItem('fs-pwa', '1');
 
-// Sem zoom: bloquear pinça (iOS gesture*, Android multi-toque) e duplo toque.
-for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
-document.addEventListener('touchmove', (e) => { if (e.touches.length > 1 || ((e as unknown as { scale?: number }).scale ?? 1) !== 1) e.preventDefault(); }, { passive: false });
-let lastTouch = 0;
-document.addEventListener('touchend', (e) => { const t = Date.now(); if (t - lastTouch < 300 && !(e.target as HTMLElement).closest('input,textarea,select')) e.preventDefault(); lastTouch = t; }, { passive: false });
+// Sem zoom: o CSS (touch-action: pan-x pan-y) já impede pinça e duplo toque sem bloquear o scroll.
+// Só o iOS precisa de gesturestart; nada de touchmove não-passivo (tornava o scroll pesado).
+for (const ev of ['gesturestart', 'gesturechange']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+
+// Ficheiro do build antigo em falta (cache desatualizada): recarregar uma vez.
+const reloadOnce = (why: string) => { if (sessionStorage.getItem('fs-reloaded') === why) return; sessionStorage.setItem('fs-reloaded', why); location.reload(); };
+window.addEventListener('vite:preloadError', (e) => { e.preventDefault(); reloadOnce('chunk'); });
+window.addEventListener('error', (e) => { if (/Loading (CSS )?chunk|Failed to fetch dynamically imported module|Importing a module script failed/i.test(String(e.message))) reloadOnce('chunk'); });
