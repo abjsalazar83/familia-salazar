@@ -1,5 +1,5 @@
 // Fila de escrita local (outbox). Lógica pura, sem React nem rede, para poder ser testada.
-export type Table = 'expenses' | 'settlements' | 'shopping_items';
+export type Table = 'expenses' | 'settlements' | 'shopping_items' | 'recurring_bills';
 export type OpKind = 'create' | 'patch' | 'delete';
 export type Op = {
   opId: string; table: Table; kind: OpKind; id: string;
@@ -23,7 +23,7 @@ export function mergeAfterFlush(start: Op[], result: Op[], current: Op[]): Op[] 
 
 /** Aplica a fila por cima dos dados do servidor (vista otimista). Devolve também os ids com alterações por sincronizar/falhadas. */
 export function applyOps(s: Snapshot, q: Op[]) {
-  const out: Snapshot = { expenses: [...s.expenses], settlements: [...s.settlements], shopping_items: [...s.shopping_items] };
+  const out: Snapshot = { expenses: [...s.expenses], settlements: [...s.settlements], shopping_items: [...s.shopping_items], recurring_bills: [...(s.recurring_bills ?? [])] };
   const state: Record<string, 'pending' | 'failed'> = {};
   for (const o of q) {
     const list = out[o.table]; const i = list.findIndex((r) => r.id === o.id);

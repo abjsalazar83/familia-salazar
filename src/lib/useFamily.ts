@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import type { Expense, Family, Item, Member, Note, Settlement } from './types';
+import type { Bill, Expense, Family, HistoryMonth, Item, Member, Note, Settlement } from './types';
 import { idbGet, idbSet } from './idb';
 import { applyOps, classify, discardOp, enqueue, flush, mergeAfterFlush, retryOp, type ExecResult, type Op, type Snapshot, type Table } from './outbox';
 
-export type FamilyData = { family: Family | null; me: Member | null; members: Member[]; expenses: Expense[]; settlements: Settlement[]; items: Item[]; notes: Note[] };
-const EMPTY: FamilyData = { family: null, me: null, members: [], expenses: [], settlements: [], items: [], notes: [] };
+export type FamilyData = { family: Family | null; me: Member | null; members: Member[]; expenses: Expense[]; settlements: Settlement[]; items: Item[]; notes: Note[]; months: HistoryMonth[]; bills: Bill[] };
+const EMPTY: FamilyData = { family: null, me: null, members: [], expenses: [], settlements: [], items: [], notes: [], months: [], bills: [] };
 type Cache = { data: FamilyData; syncedAt: string };
 
 export function useOnline() {
@@ -59,16 +59,20 @@ export function useFamily(session: Session | null) {
       let next = EMPTY;
       if (me) {
         const fid = me.family_id;
-        const [f, m, e, s, i, n] = await Promise.all([
+        const [f, m, e, s, i, n, h, b] = await Promise.all([
           supabase.from('families').select('id,name,invite_code').eq('id', fid).single(),
           supabase.from('family_members').select('*').eq('family_id', fid).order('created_at'),
           supabase.from('expenses').select('*').eq('family_id', fid).order('date', { ascending: false }).order('created_at', { ascending: false }),
           supabase.from('settlements').select('*').eq('family_id', fid).order('date', { ascending: false }).order('created_at', { ascending: false }),
           supabase.from('shopping_items').select('*').eq('family_id', fid).order('bought').order('created_at', { ascending: false }),
           supabase.from('history_notes').select('*').eq('family_id', fid).order('sort'),
+          supabase.from('history_months').select('*').eq('family_id', fid).order('ym'),
+          supabase.from('recurring_bills').select('*').eq('family_id', fid).order('sort').order('name'),
         ]);
         for (const r of [f, m, e, s, i, n]) if (r.error) throw r.error;
-        next = { family: f.data, me, members: m.data!, expenses: e.data!, settlements: s.data!, items: i.data!, notes: n.data! };
+        // Antes de correr migration_v3.sql estas tabelas não existem: a app continua a funcionar sem histórico.
+        const opt = <T,>(r: { data: T[] | null; error: unknown }) => (r.error ? [] : r.data ?? []);
+        next = { family: f.data, me, members: m.data!, expenses: e.data!, settlements: s.data!, items: i.data!, notes: n.data!, months: opt<HistoryMonth>(h), bills: opt<Bill>(b) };
       }
       const at = new Date();
       setServer(next); setStatus('ready'); setError(''); setSyncedAt(at);
@@ -120,7 +124,7 @@ export function useFamily(session: Session | null) {
   useEffect(() => {
     if (!fid) return;
     const ch = supabase.channel('familia-' + fid);
-    for (const t of ['expenses', 'settlements', 'shopping_items', 'family_members', 'history_notes'])
+    for (const t of ['expenses', 'settlements', 'shopping_items', 'family_members', 'history_notes', 'history_months', 'recurring_bills'])
       ch.on('postgres_changes', { event: '*', schema: 'public', table: t, filter: `family_id=eq.${fid}` }, () => refetch());
     ch.subscribe((st) => setLive(st === 'SUBSCRIBED'));
     const vis = () => { if (document.visibilityState === 'visible') sync(); };
@@ -137,9 +141,9 @@ export function useFamily(session: Session | null) {
   const discard = useCallback((opId: string) => setQueue(discardOp(qRef.current, opId)), [setQueue]);
 
   const { data, state } = useMemo(() => {
-    const snap: Snapshot = { expenses: server.expenses, settlements: server.settlements, shopping_items: server.items } as unknown as Snapshot;
+    const snap: Snapshot = { expenses: server.expenses, settlements: server.settlements, shopping_items: server.items, recurring_bills: server.bills ?? [] } as unknown as Snapshot;
     const r = applyOps(snap, queue);
-    return { data: { ...server, expenses: r.data.expenses as unknown as Expense[], settlements: r.data.settlements as unknown as Settlement[], items: r.data.shopping_items as unknown as Item[] }, state: r.state };
+    return { data: { ...server, expenses: r.data.expenses as unknown as Expense[], settlements: r.data.settlements as unknown as Settlement[], items: r.data.shopping_items as unknown as Item[], months: server.months ?? [], bills: r.data.recurring_bills as unknown as Bill[] }, state: r.state };
   }, [server, queue]);
 
   return { data, state, queue, status, error, syncedAt, live, syncing, refetch: sync, mutate, retry, discard };

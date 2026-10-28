@@ -50,7 +50,7 @@ describe('money', () => {
   it('parseCents', () => {
     expect(parseCents('12,34')).toBe(1234);
     expect(parseCents('0,1')).toBe(10);
-    expect(parseCents('0,00')).toBe(0);
+    expect(parseCents('1 234,59')).toBe(123459);
     expect(parseCents('1.234,56')).toBe(123456);
     expect(parseCents('455.85')).toBe(45585);
     expect(parseCents('abc')).toBeNull();
