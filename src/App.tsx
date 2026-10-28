@@ -7,6 +7,7 @@ import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
 import { CATS, type Bill, type Budget, type Expense, type HistoryMonth, type Item, type Member } from './lib/types';
 import { useExtra, Savings, Upcoming, CloseMonth, Money, NotifySettings, PorLancar, type Extra } from './Plan';
 import { hasV7, monthlyEq } from './lib/plan';
+import { ReceiptButton, uploadReceipt, openReceipt, type ReceiptResult } from './Receipt';
 import { averages, byStore, currentPace, costByCategory, fixedVsVariable, monthly, savingTips, ymLabel } from './lib/history';
 import { THEMES, type ThemeId } from './themes';
 import { crossings, usage } from './lib/budget';
@@ -153,7 +154,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
     el.addEventListener('touchstart', start, { passive: true }); el.addEventListener('touchend', end, { passive: true });
     return () => { el.removeEventListener('touchstart', start); el.removeEventListener('touchend', end); };
   }, []);
-  const [panel, setPanel] = useState<'' | 'despesa' | 'saldar' | 'fechar'>('');
+  const [panel, setPanel] = useState<'' | 'despesa' | 'saldar' | 'fechar' | 'talao'>('');
   const [editing, setEditing] = useState<Expense | null>(null);
   const [toast, setToast] = useState<Toast>(null);
   const [locked, unlocked] = useLock();
@@ -234,7 +235,7 @@ const describeOp = (o: Op) => `${OPN[o.table]}: ${o.kind === 'create' ? 'novo' :
 function Mark({ s }: { s?: 'pending' | 'failed' }) {
   return s ? <span className={'tag ' + (s === 'failed' ? 'err' : 'warn')}>{s === 'failed' ? 'Falhou' : 'Por sincronizar'}</span> : null;
 }
-type PanelProps = { panel: '' | 'despesa' | 'saldar' | 'fechar'; setPanel: (p: '' | 'despesa' | 'saldar' | 'fechar') => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
+type PanelProps = { panel: '' | 'despesa' | 'saldar' | 'fechar' | 'talao'; setPanel: (p: '' | 'despesa' | 'saldar' | 'fechar' | 'talao') => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
 
 const nameOf = (ms: Member[], id: string) => ms.find((m) => m.id === id)?.display_name ?? '?';
 function useBalance(d: FamilyData) {
@@ -253,13 +254,13 @@ function BalanceCard({ data, state }: { data: FamilyData; state: Ctx['state'] })
   );
 }
 
-function ExpenseForm({ data, mutate, editing, close }: Ctx & { editing: Expense | null; close: () => void }) {
+function ExpenseForm({ data, mutate, editing, close, receipt }: Ctx & { editing: Expense | null; close: () => void; receipt?: ReceiptResult | null }) {
   const ms = data.members; const me = data.me!;
   const other = ms.find((m) => m.id !== me.id);
   const [f, setF] = useState(() => editing ? {
     amount: centsToInput(editing.amount_cents), desc: editing.description, cat: editing.category, payer: editing.paid_by,
     type: editing.type, split: editing.split_mode, mine: centsToInput(editing.shares[me.id] ?? 0), date: editing.date,
-  } : { amount: '', desc: '', cat: 'Supermercado', payer: me.id, type: (other ? 'partilhada' : 'pessoal') as Expense['type'], split: '50/50' as Expense['split_mode'], mine: '', date: todayIso() });
+  } : { amount: receipt?.guess.total ? centsToInput(receipt.guess.total) : '', desc: receipt?.guess.store ?? '', cat: receipt ? receipt.guess.category ?? 'Outros' : 'Supermercado', payer: me.id, type: (other ? 'partilhada' : 'pessoal') as Expense['type'], split: '50/50' as Expense['split_mode'], mine: '', date: receipt?.guess.date ?? todayIso() });
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const cents = parseCents(f.amount);
   const mine = parseCents(f.mine || '0');
@@ -279,6 +280,7 @@ function ExpenseForm({ data, mutate, editing, close }: Ctx & { editing: Expense 
     if (cr.length && !confirm(cr.map((u) => `${u.level === 'over' ? 'Passa o' : 'Chega a 80% do'} limite ${budgetName(u.budget, ms)}: ${eur(u.spent)} / ${eur(u.budget.limit_cents)}`).join('\n') + '\n\nGravar mesmo assim?')) return;
     setBusy(true);
     const id = editing?.id ?? uuid();
+    if (!editing && receipt) { const path = await uploadReceipt(me.family_id, id, receipt.photo); if (path) Object.assign(row, { receipt_path: path }); }
     const ok = editing ? await mutate('Despesa atualizada.', 'expenses', 'patch', id, row)
       : await mutate('Despesa registada.', 'expenses', 'create', id, { id, family_id: me.family_id, ...row, is_deleted: false, created_at: new Date().toISOString() });
     setBusy(false); if (ok) close();
@@ -289,7 +291,8 @@ function ExpenseForm({ data, mutate, editing, close }: Ctx & { editing: Expense 
   };
   return (
     <div className="form">
-      <h2>{editing ? 'Editar despesa' : 'Nova despesa'}</h2>
+      <h2>{editing ? 'Editar despesa' : receipt ? 'Confirmar talão' : 'Nova despesa'}</h2>
+      {receipt && <p className="dim small">Lido do talão: confirma valor, loja e data antes de guardar. A foto fica privada da família.</p>}
       <Field label="Quanto? (€)"><input className="num" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="0,00" autoFocus={!editing} /></Field>
       <Field label="O quê?"><input value={f.desc} maxLength={200} onChange={(e) => setF({ ...f, desc: e.target.value })} /></Field>
       <span className="lab">Quem pagou?</span>
@@ -366,6 +369,7 @@ function ExpenseRow({ e, ms, onEdit, s }: { e: Expense; ms: Member[]; onEdit?: (
       <div className="grow"><div>{e.description}{e.is_deleted && ' (retirada)'} <Mark s={s} /></div>
         <div className="dim small">{ptDate(e.date)} · {e.category} · pagou {nameOf(ms, e.paid_by)} · {e.type === 'pessoal' ? 'pessoal' : e.split_mode === '50/50' ? 'partilhada 50/50' : 'partilhada (personalizada)'}</div></div>
       <span className="num">{eur(e.amount_cents)}</span>
+      {e.receipt_path && <button className="link" aria-label="Ver talão" onClick={() => openReceipt(e.receipt_path!)}>🧾</button>}
       {onEdit && !e.is_deleted && <button onClick={onEdit} aria-label={`Editar ${e.description}`}>Editar</button>}
     </li>
   );
@@ -410,6 +414,7 @@ function Notes({ notes }: { notes: FamilyData['notes'] }) {
 
 function Month(p: Ctx & PanelProps) {
   const { data, panel, setPanel, mutate } = p; const me = data.me!.id;
+  const [rc, setRc] = useState<ReceiptResult | null>(null);
   const [showGone, setShowGone] = useState(false); const [who, setWho] = useState<'todas' | 'conjuntas' | 'minhas'>('todas');
   const day = new Date().getDate(); const edge = day <= 7 || day >= 25;
   const list = data.expenses.filter((e) => (showGone || !e.is_deleted) && (who === 'todas' || (who === 'conjuntas' ? e.type === 'partilhada' : e.type === 'pessoal' && e.paid_by === me)));
@@ -418,7 +423,9 @@ function Month(p: Ctx & PanelProps) {
     <>
       <BalanceCard data={data} state={p.state} />
       {!panel && edge && <button className="wide" onClick={() => setPanel('fechar')}>fechar mês</button>}
-      {panel === 'despesa' && !p.editing ? <ExpenseForm {...p} close={() => setPanel('')} /> : !panel && <button className="pri wide" onClick={() => p.openExpense(null)}>+ despesa</button>}
+      {panel === 'despesa' && !p.editing ? <ExpenseForm key={rc ? 'rc' : 'n'} {...p} receipt={rc} close={() => { setRc(null); setPanel(''); }} />
+        : (!panel || panel === 'talao') && <div className="row2"><button className="pri wide" onClick={() => { setRc(null); p.openExpense(null); }}>+ despesa</button>
+          <div><ReceiptButton big={panel === 'talao'} onResult={(r) => { setRc(r); p.openExpense(null); }} /></div></div>}
       {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={mutate as never} online={p.online} close={() => setPanel('')} />}
       <PorLancar data={data} extra={p.extra} mutate={mutate as never} online={p.online} />
       <div className="seg" role="radiogroup" aria-label="Filtro">{(['todas', 'conjuntas', 'minhas'] as const).map((k) => <button key={k} role="radio" aria-checked={who === k} className={who === k ? 'pri' : ''} onClick={() => setWho(k)}>{k[0].toUpperCase() + k.slice(1)}</button>)}</div>

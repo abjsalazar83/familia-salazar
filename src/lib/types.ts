@@ -3,7 +3,7 @@ export type Family = { id: string; name: string; invite_code: string };
 export type Expense = {
   id: string; family_id: string; amount_cents: number; description: string; category: string;
   paid_by: string; type: 'pessoal' | 'partilhada'; split_mode: '50/50' | 'personalizada';
-  shares: Record<string, number>; date: string; is_deleted: boolean; created_at: string;
+  shares: Record<string, number>; date: string; is_deleted: boolean; created_at: string; receipt_path?: string | null;
 };
 export type Settlement = {
   id: string; family_id: string; from_member: string; to_member: string; amount_cents: number;

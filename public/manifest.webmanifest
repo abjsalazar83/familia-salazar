@@ -48,6 +48,18 @@
       ]
     },
     {
+      "name": "Ler talão",
+      "short_name": "Talão",
+      "url": "./?acao=talao",
+      "icons": [
+        {
+          "src": "sc-despesa.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
       "name": "Lista de compras",
       "short_name": "Compras",
       "url": "./?acao=compras",
@@ -66,18 +78,6 @@
       "icons": [
         {
           "src": "sc-saldo.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "Resumo",
-      "short_name": "Resumo",
-      "url": "./?acao=resumo",
-      "icons": [
-        {
-          "src": "sc-historico.png",
           "sizes": "96x96",
           "type": "image/png"
         }
