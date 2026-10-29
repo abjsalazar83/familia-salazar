@@ -2,7 +2,7 @@
 // Estratégias: Cache First para ficheiros com hash (assets/) e OCR (tess/); Stale-While-Revalidate para ícones/imagens/fontes;
 // Network First (3 s) para leituras REST do Supabase, com cópia de recurso; navegação: rede → index guardado → offline.html.
 // Nunca guarda auth, storage (talões), realtime nem nada que não seja GET.
-const VERSION = 'fs-v16';
+const VERSION = 'fs-v17';
 const TESS = 'fs-tess-1'; // leitor de talões: grande, guardado à parte para não voltar a descarregar a cada versão
 const API = 'fs-api-1';   // últimas leituras do Supabase (apagadas ao terminar sessão)
 const SB = 'luumtyvsssazlexsqudk.supabase.co';
