@@ -193,6 +193,8 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
   };
   const pendingN = queue.filter((o) => o.status === 'pending').length;
   const failed = queue.filter((o) => o.status === 'failed');
+  const nFailed = useRef(0);
+  useEffect(() => { if (failed.length > nFailed.current) setToast({ kind: 'bad', text: 'O servidor recusou uma alteração: ' + msg(failed[failed.length - 1].error) + ' · nada foi apagado; vê «por enviar».' }); nFailed.current = failed.length; }, [failed.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (locked) return <LockScreen done={unlocked} />;
   if (status === 'loading') return <p className="dim">A carregar dados…</p>;
@@ -259,6 +261,11 @@ function BalanceCard({ data, state }: { data: FamilyData; state: Ctx['state'] })
   );
 }
 
+/** Depois de gravar, mostra a linha (scroll + realce) para não parecer que desapareceu. */
+function showRow(id: string) {
+  setTimeout(() => { const el = document.getElementById('e-' + id); if (!el) return; el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2200); }, 120);
+}
+
 function ExpenseForm({ data, mutate, editing, close, receipt }: Ctx & { editing: Expense | null; close: () => void; receipt?: ReceiptResult | null }) {
   const ms = data.members; const me = data.me!;
   const other = ms.find((m) => m.id !== me.id);
@@ -286,9 +293,14 @@ function ExpenseForm({ data, mutate, editing, close, receipt }: Ctx & { editing:
     setBusy(true);
     const id = editing?.id ?? uuid();
     if (!editing && receipt) { const path = await uploadReceipt(me.family_id, id, receipt.photo); if (path) Object.assign(row, { receipt_path: path }); }
-    const ok = editing ? await mutate('Despesa atualizada.', 'expenses', 'patch', id, row)
+    if (editing && (Object.keys(row) as (keyof typeof row)[]).every((k) => JSON.stringify(row[k] ?? null) === JSON.stringify((editing as Record<string, unknown>)[k] ?? null))) {
+      setBusy(false); setErr('Não alteraste nada. Muda um campo ou carrega em Cancelar.'); return;
+    }
+    const ok = editing ? await mutate(`«${row.description}» atualizada.`, 'expenses', 'patch', id, row)
       : await mutate('Despesa registada.', 'expenses', 'create', id, { id, family_id: me.family_id, ...row, is_deleted: false, created_at: new Date().toISOString() });
-    setBusy(false); if (ok) { if (!editing) markSaved(); close(); }
+    setBusy(false);
+    if (!ok) return setErr('Não foi guardada. Os dados ficam no formulário; tenta de novo.');
+    if (!editing) markSaved(); close(); showRow(id);
   };
   const remove = async () => {
     if (!editing || !confirm('Retirar esta despesa do saldo? Fica no histórico como apagada.')) return;
@@ -379,7 +391,7 @@ function Confirm({ e, ms, me, onToggle }: { e: Expense; ms: Member[]; me: string
 
 function ExpenseRow({ e, ms, onEdit, s, me, onConfirm }: { e: Expense; ms: Member[]; onEdit?: () => void; s?: 'pending' | 'failed'; me?: string; onConfirm?: (e: Expense) => void }) {
   return (
-    <li className={'li' + (e.is_deleted ? ' gone' : '')}>
+    <li id={'e-' + e.id} className={'li' + (e.is_deleted ? ' gone' : '')}>
       {me && <Confirm e={e} ms={ms} me={me} onToggle={onConfirm} />}
       <div className="grow"><div>{e.description}{e.is_deleted && ' (retirada)'}{e.extraordinary && <span className="warn small"> · extraordinária</span>} <Mark s={s} /></div>
         <div className="dim small">{ptDate(e.date)} · {e.category} · pagou {nameOf(ms, e.paid_by)} · {e.type === 'pessoal' ? 'pessoal' : e.split_mode === '50/50' ? 'partilhada 50/50' : 'partilhada (personalizada)'}</div>
@@ -448,7 +460,7 @@ function Month(p: Ctx & PanelProps) {
       {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={mutate as never} online={p.online} close={() => setPanel('')} />}
       <PorLancar data={data} extra={p.extra} mutate={mutate as never} online={p.online} />
       <div className="seg" role="radiogroup" aria-label="Filtro">{(['todas', 'conjuntas', 'minhas'] as const).map((k) => <button key={k} role="radio" aria-checked={who === k} className={who === k ? 'pri' : ''} onClick={() => setWho(k)}>{k[0].toUpperCase() + k.slice(1)}</button>)}</div>
-      {panel === 'despesa' && p.editing && <ExpenseForm {...p} close={() => setPanel('')} />}
+      {panel === 'despesa' && p.editing && <div ref={(el) => { if (el && el.dataset.id !== p.editing!.id) { el.dataset.id = p.editing!.id; el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }}><ExpenseForm key={p.editing.id} {...p} close={() => setPanel('')} /></div>}
       <h3>despesas · {list.length}</h3>
       {cc.total > 0 && <p className="small"><span className={cc.done === cc.total ? 'ok' : 'warn'}>{cc.done} de {cc.total} confirmadas</span><span className="dim"> este mês{pend ? ` · ${pend} à espera de ti (toca ○)` : ''}</span></p>}
       {list.length ? <ul className="list">{list.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} me={me} onConfirm={confirmE} onEdit={() => p.openExpense(e)} />)}</ul> : <p className="dim">Sem despesas.</p>}
