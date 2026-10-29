@@ -2,8 +2,8 @@
 // Estratégias: Cache First para ficheiros com hash (assets/) e OCR (tess/); Stale-While-Revalidate para ícones/imagens/fontes;
 // Network First (3 s) para leituras REST do Supabase, com cópia de recurso; navegação: rede → index guardado → offline.html.
 // Nunca guarda auth, storage (talões), realtime nem nada que não seja GET.
-const VERSION = 'fs-v21';
-const TESS = 'fs-tess-1'; // leitor de talões: grande, guardado à parte para não voltar a descarregar a cada versão
+const VERSION = 'fs-v22';
+const TESS = 'fs-tess-2'; // leitor de talões: grande, guardado à parte para não voltar a descarregar a cada versão
 const API = 'fs-api-1';   // últimas leituras do Supabase (apagadas ao terminar sessão)
 const SB = 'luumtyvsssazlexsqudk.supabase.co';
 const SHELL = ['./', './index.html', './offline.html', './manifest.webmanifest', './icon-192.png', './icon-192.webp', './icon-192.avif', './icon-180.png', './icon-512.png', './icon-maskable-512.png', './favicon.ico', './favicon-32.png', './sc-despesa.png', './sc-compras.png', './sc-saldo.png', './sc-historico.png'];
