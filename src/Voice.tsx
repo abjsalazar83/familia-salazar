@@ -35,11 +35,11 @@ export function VoiceButton({ onResult, auto, big }: { onResult: (g: VoiceGuess)
   };
   useEffect(() => { if (auto) start(); return () => rec.current?.abort(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div className="voice">
-      <button className={'wide' + (on ? ' rec' : '') + (big ? ' pri' : '')} aria-pressed={on} aria-label={on ? 'A ouvir — toca para parar' : 'Despesa por voz'}
-        onClick={() => (on ? rec.current?.abort() : start())}>🎤 {on ? 'A ouvir…' : 'Voz'}</button>
-      {(on || heard) && <p className="dim small" aria-live="polite">{heard ? `«${heard}»` : 'Diz, por exemplo: «Mercadona 80 euros e 30, pagou a Ana»'}</p>}
-      {err && <p className="err small" role="alert">{err}</p>}
-    </div>
+    <>
+      <button className={'act' + (on ? ' rec' : '') + (big ? ' pri' : '')} aria-pressed={on} aria-label={on ? 'A ouvir — toca para parar' : 'Despesa por voz'}
+        onClick={() => (on ? rec.current?.abort() : start())}><span className="ic" aria-hidden>🎤</span>{on ? 'A ouvir…' : 'Voz'}</button>
+      {(on || heard) && <p className="dim small act-x" aria-live="polite">{heard ? `«${heard}»` : 'Diz, por exemplo: «Mercadona 80 euros e 30, pagou a Ana»'}</p>}
+      {err && <p className="err small act-x" role="alert">{err}</p>}
+    </>
   );
 }

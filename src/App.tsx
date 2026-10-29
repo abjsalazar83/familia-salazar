@@ -1,4 +1,4 @@
-const APP_V = 'fs-v22';
+const APP_V = 'fs-v23';
 import { matchExpense } from './lib/search';
 import { settlementEffect, payerTone, groupByCategory, paidBy } from './lib/view';
 import { confirmCount } from './lib/anomaly';
@@ -471,9 +471,10 @@ function Month(p: Ctx & PanelProps) {
       <BalanceCard data={data} state={p.state} />
       {!panel && edge && <button className="wide" onClick={() => setPanel('fechar')}>fechar mês</button>}
       {panel === 'despesa' && !p.editing ? <ExpenseForm key={rc ? 'rc' : vc ? 'v' + vc.text : 'n'} {...p} receipt={rc} voice={vc} close={() => { setRc(null); setVc(null); setPanel(''); }} />
-        : (!panel || panel === 'talao' || panel === 'voz') && <><div className="row2"><button className="pri wide" onClick={() => { setRc(null); setVc(null); p.openExpense(null); }}>+ despesa</button>
-          <div><ReceiptButton big={panel === 'talao'} onResult={(r) => { setRc(r); setVc(null); p.openExpense(null); }} /></div></div>
-          <VoiceButton key={panel} auto={panel === 'voz'} big={panel === 'voz'} onResult={(g) => { setRc(null); setVc(g); p.openExpense(null); }} /></>}
+        : (!panel || panel === 'talao' || panel === 'voz') && <div className="acts">
+          <button className="act pri" onClick={() => { setRc(null); setVc(null); p.openExpense(null); }}><span className="ic" aria-hidden>+</span>Despesa</button>
+          <ReceiptButton big={panel === 'talao'} onResult={(r) => { setRc(r); setVc(null); p.openExpense(null); }} />
+          <VoiceButton key={panel} auto={panel === 'voz'} big={panel === 'voz'} onResult={(g) => { setRc(null); setVc(g); p.openExpense(null); }} /></div>}
       {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={mutate as never} online={p.online} close={() => setPanel('')} />}
       <PorLancar data={data} extra={p.extra} mutate={mutate as never} online={p.online} />
       <div className="sumbar" aria-live="polite"><span className="pay-blue">Pagaste {eur(paid[me] ?? 0)}</span> · <span className="pay-pink">{otherN} pagou {eur(otherM ? paid[otherM.id] ?? 0 : 0)}</span> · <b>{!bal.debt ? 'contas certas' : bal.debt.to === me ? `${otherN} deve-te ${eur(bal.debt.cents)}` : `Deves ${eur(bal.debt.cents)} a ${otherN}`}</b></div>
@@ -486,7 +487,7 @@ function Month(p: Ctx & PanelProps) {
         const isOpen = !!q.trim() || !!open[g.category] || (!!p.editing && g.items.some((e) => e.id === p.editing!.id));
         return <section key={g.category} className={'grp' + (isOpen ? ' open' : '')}>
           <button className={'grp-h' + (g.payers.length === 1 ? ' pay-' + payerTone(data.members, g.payers[0]) : ' pay-mix')} aria-expanded={isOpen} onClick={() => setOpen({ ...open, [g.category]: !open[g.category] })}>
-            <span className="chev" aria-hidden>›</span><span className="grow">{g.category} · {g.items.length} · {eur(g.total)}</span><Effect c={g.effect} />
+            <span className="chev" aria-hidden>›</span><span className="grow grp-t"><span>{g.category}</span><span className="dim num"><span className="grp-n"> · {g.items.length}</span> · {eur(g.total)}</span></span><Effect c={g.effect} />
           </button>
           <div className="grp-b"><div><ul className="list">{g.items.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} me={me} onConfirm={confirmE} onEdit={() => p.openExpense(e)} />)}</ul></div></div>
         </section>; })}</div> : <p className="dim">Sem despesas.</p>}
@@ -587,7 +588,7 @@ function Bills({ data, mutate, state, extra, online }: Ctx) {
     <>
       {up}
       <h3>contas da casa (antigas)</h3>
-      <div className="kpi"><div><span className="big num">{eur(total)}</span><span className="dim">/mês</span></div>
+      <div className="kpi"><div><span className="big num">{eur(total)}</span><span className="dim per">/mês</span></div>
         <div className="dim">{unknown ? `${unknown} por registar · ` : ''}≈ = estimativa</div></div>
       <ul className="list">{bills.map((b) => (
         <li key={b.id} className="li col">

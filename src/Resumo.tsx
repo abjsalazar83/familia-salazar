@@ -98,7 +98,7 @@ export default function History({ data, refetch, online, extra }: { data: Family
     <>
       <div className="seg" role="radiogroup" aria-label="Período">{[12, 24, 60].map((k) => <button key={k} role="radio" aria-checked={n === k} className={n === k ? 'pri' : ''} onClick={() => setN(k)}>{k}m</button>)}</div>
       {a && <div className="kpi">
-        <div><span className="big num">{eur(a.total)}</span><span className="dim">/mês · {eur(a.total * 12)}/ano</span></div>
+        <div><span className="big num">{eur(a.total)}</span><span className="dim per">/mês · {eur(a.total * 12)}/ano</span></div>
         <div className="dim small">{eur(a.noExtra)}/mês sem extraordinários · {ymLabel(a.from)}–{ymLabel(a.to)}</div>
       </div>}
       <Bars height={70} items={last.map((m) => ({ label: ymLabel(m.ym), v: m.total_cents, dim: m.provisional }))} avg={a?.total} />

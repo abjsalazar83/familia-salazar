@@ -165,7 +165,7 @@ export function Upcoming({ data, extra, online }: { data: FamilyData; extra: Ext
       {edit !== 'novo' && <button className="danger" onClick={() => remove(edit!)}>arquivar</button>}</div></div>;
   return (
     <section className="group">
-      <div className="kpi"><Money c={monthly} className="big" /><span className="dim"> /mês</span>
+      <div className="kpi"><Money c={monthly} className="big" /><span className="dim per">/mês</span>
         {v7 && <div className="dim small">conjunto {eur(tot.conjunta)}{Object.entries(tot.pessoal).map(([k, v]) => ` · ${names[k] ?? '?'} ${eur(v)}`).join('')}</div>}</div>
       <h3>próximos</h3>
       <ul className="list ios">{list.map((u, i) => (
