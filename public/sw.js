@@ -2,7 +2,7 @@
 // Estratégias: Cache First para ficheiros com hash (assets/) e OCR (tess/); Stale-While-Revalidate para ícones/imagens/fontes;
 // Network First (3 s) para leituras REST do Supabase, com cópia de recurso; navegação: rede → index guardado → offline.html.
 // Nunca guarda auth, storage (talões), realtime nem nada que não seja GET.
-const VERSION = 'fs-v18';
+const VERSION = 'fs-v19';
 const TESS = 'fs-tess-1'; // leitor de talões: grande, guardado à parte para não voltar a descarregar a cada versão
 const API = 'fs-api-1';   // últimas leituras do Supabase (apagadas ao terminar sessão)
 const SB = 'luumtyvsssazlexsqudk.supabase.co';
@@ -11,14 +11,16 @@ const KEEP = [VERSION, TESS, API];
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
     const c = await caches.open(VERSION);
-    await c.addAll(SHELL);
-    // Pré-guardar os ficheiros com hash (JS/CSS de arranque primeiro).
-    const html = await (await fetch('./index.html', { cache: 'no-cache' })).text();
-    const assets = [...html.matchAll(/(?:src|href)="(\.?\/?[^"]*assets\/[^"]+)"/g)].map((m) => new URL(m[1], self.registration.scope).href);
-    await c.addAll(assets);
-    // Separadores carregados a pedido (Resumo, ⚙): também guardados, para abrirem offline.
-    const all = await fetch('./precache.json', { cache: 'no-cache' }).then((r) => r.json()).catch(() => []);
-    await c.addAll(all.map((f) => new URL(f, self.registration.scope).href).filter((u) => !assets.includes(u))).catch(() => {});
+    // Um ficheiro em falta nunca pode estragar a instalação: cada um é guardado à parte e as falhas ignoradas.
+    const add = (urls) => Promise.all(urls.map((u) => c.add(new Request(u, { cache: 'no-cache' })).catch(() => {})));
+    await add(SHELL);
+    try {
+      const html = await (await fetch('./index.html', { cache: 'no-cache' })).text();
+      const assets = [...html.matchAll(/(?:src|href)="(\.?\/?[^"]*assets\/[^"]+)"/g)].map((m) => new URL(m[1], self.registration.scope).href);
+      await add(assets);
+      const all = await fetch('./precache.json', { cache: 'no-cache' }).then((r) => r.json()).catch(() => []);
+      await add(all.map((f) => new URL(f, self.registration.scope).href).filter((u) => !assets.includes(u)));
+    } catch { /* sem rede: instala na mesma, os ficheiros vêm da rede quando pedidos */ }
     await self.skipWaiting();
   })());
 });

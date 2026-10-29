@@ -35,6 +35,11 @@ if (new URLSearchParams(location.search).get('source') === 'pwa') sessionStorage
 for (const ev of ['gesturestart', 'gesturechange']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
 
 // Ficheiro do build antigo em falta (cache desatualizada): recarregar uma vez.
-const reloadOnce = (why: string) => { if (sessionStorage.getItem('fs-reloaded') === why) return; sessionStorage.setItem('fs-reloaded', why); location.reload(); };
+const reloadOnce = (why: string) => {
+  if (sessionStorage.getItem('fs-reloaded') === why) return; sessionStorage.setItem('fs-reloaded', why);
+  // Ficheiro em falta: apaga a cache da versão (nunca a da API nem do leitor de talões) antes de recarregar.
+  const clear = why === 'chunk' && 'caches' in self ? caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith('fs-v')).map((k) => caches.delete(k)))) : Promise.resolve();
+  clear.catch(() => {}).finally(() => location.reload());
+};
 window.addEventListener('vite:preloadError', (e) => { e.preventDefault(); reloadOnce('chunk'); });
 window.addEventListener('error', (e) => { if (/Loading (CSS )?chunk|Failed to fetch dynamically imported module|Importing a module script failed/i.test(String(e.message))) reloadOnce('chunk'); });

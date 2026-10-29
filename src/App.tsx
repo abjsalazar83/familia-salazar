@@ -1,4 +1,4 @@
-const APP_V = 'fs-v18';
+const APP_V = 'fs-v19';
 import { matchExpense } from './lib/search';
 import { confirmCount } from './lib/anomaly';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
