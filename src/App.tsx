@@ -1,3 +1,4 @@
+import { confirmCount } from './lib/anomaly';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
@@ -263,8 +264,8 @@ function ExpenseForm({ data, mutate, editing, close, receipt }: Ctx & { editing:
   const other = ms.find((m) => m.id !== me.id);
   const [f, setF] = useState(() => editing ? {
     amount: centsToInput(editing.amount_cents), desc: editing.description, cat: editing.category, payer: editing.paid_by,
-    type: editing.type, split: editing.split_mode, mine: centsToInput(editing.shares[me.id] ?? 0), date: editing.date,
-  } : { amount: receipt?.guess.total ? centsToInput(receipt.guess.total) : '', desc: receipt?.guess.store ?? '', cat: receipt ? receipt.guess.category ?? 'Outros' : 'Supermercado', payer: me.id, type: (other ? 'partilhada' : 'pessoal') as Expense['type'], split: '50/50' as Expense['split_mode'], mine: '', date: receipt?.guess.date ?? todayIso() });
+    type: editing.type, split: editing.split_mode, mine: centsToInput(editing.shares[me.id] ?? 0), date: editing.date, extra: !!editing.extraordinary, reason: editing.reason ?? '',
+  } : { amount: receipt?.guess.total ? centsToInput(receipt.guess.total) : '', desc: receipt?.guess.store ?? '', cat: receipt ? receipt.guess.category ?? 'Outros' : 'Supermercado', payer: me.id, type: (other ? 'partilhada' : 'pessoal') as Expense['type'], split: '50/50' as Expense['split_mode'], mine: '', date: receipt?.guess.date ?? todayIso(), extra: false, reason: '' });
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const cents = parseCents(f.amount);
   const mine = parseCents(f.mine || '0');
@@ -279,7 +280,7 @@ function ExpenseForm({ data, mutate, editing, close, receipt }: Ctx & { editing:
     if (!cents || cents <= 0) return setErr('Indica um valor maior que zero (ex.: 12,50).');
     if (!f.desc.trim()) return setErr('Escreve o que foi.');
     if (f.type === 'partilhada' && !preview) return setErr(`A tua parte tem de estar entre 0 e ${eur(cents)}.`);
-    const row = { amount_cents: cents, description: f.desc.trim(), category: f.cat, paid_by: f.payer, type: f.type, split_mode: f.split, shares: f.type === 'partilhada' ? preview! : {}, date: f.date || todayIso() };
+    const row = { amount_cents: cents, description: f.desc.trim(), category: f.cat, paid_by: f.payer, type: f.type, split_mode: f.split, shares: f.type === 'partilhada' ? preview! : {}, date: f.date || todayIso(), extraordinary: f.extra, reason: f.reason.trim() || null };
     const cr = crossings(data.budgets, data.expenses, { ...row, id: editing?.id, is_deleted: false }, editing?.id);
     if (cr.length && !confirm(cr.map((u) => `${u.level === 'over' ? 'Passa o' : 'Chega a 80% do'} limite ${budgetName(u.budget, ms)}: ${eur(u.spent)} / ${eur(u.budget.limit_cents)}`).join('\n') + '\n\nGravar mesmo assim?')) return;
     setBusy(true);
@@ -310,6 +311,8 @@ function ExpenseForm({ data, mutate, editing, close, receipt }: Ctx & { editing:
         <summary>Mais opções (categoria, data, divisão)</summary>
         <Field label="Categoria"><select value={f.cat} onChange={(e) => setF({ ...f, cat: e.target.value })}>{CATS.map((c) => <option key={c}>{c}</option>)}</select></Field>
         <Field label="Data"><input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></Field>
+        <label className="check small"><input type="checkbox" checked={f.extra} onChange={(e) => setF({ ...f, extra: e.target.checked })} /> extraordinária (fora do normal)</label>
+        {f.extra && <Field label="Razão"><input value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} placeholder="ex.: reparação do carro" /></Field>}
         {f.type === 'partilhada' && other && <>
           <span className="lab">Divisão</span>
           <div className="seg" role="radiogroup" aria-label="Divisão">
@@ -367,11 +370,20 @@ function SettleForm({ data, mutate, close }: Ctx & { close: () => void }) {
   );
 }
 
-function ExpenseRow({ e, ms, onEdit, s }: { e: Expense; ms: Member[]; onEdit?: () => void; s?: 'pending' | 'failed' }) {
+function Confirm({ e, ms, me, onToggle }: { e: Expense; ms: Member[]; me: string; onToggle?: (e: Expense) => void }) {
+  if (e.type !== 'partilhada' || e.is_deleted) return null;
+  const ok = !!e.confirmed_by; const can = me !== e.paid_by && (!ok || e.confirmed_by === me);
+  const label = ok ? `Confirmada por ${nameOf(ms, e.confirmed_by!)}${can ? ' · tocar para retirar' : ''}` : can ? 'Confirmar este valor' : `Por confirmar pelo outro membro`;
+  return <button className={'cf' + (ok ? ' on' : '')} aria-label={label} title={label} disabled={!can || !onToggle} onClick={() => onToggle?.(e)}>{ok ? '✓' : '○'}</button>;
+}
+
+function ExpenseRow({ e, ms, onEdit, s, me, onConfirm }: { e: Expense; ms: Member[]; onEdit?: () => void; s?: 'pending' | 'failed'; me?: string; onConfirm?: (e: Expense) => void }) {
   return (
     <li className={'li' + (e.is_deleted ? ' gone' : '')}>
-      <div className="grow"><div>{e.description}{e.is_deleted && ' (retirada)'} <Mark s={s} /></div>
-        <div className="dim small">{ptDate(e.date)} · {e.category} · pagou {nameOf(ms, e.paid_by)} · {e.type === 'pessoal' ? 'pessoal' : e.split_mode === '50/50' ? 'partilhada 50/50' : 'partilhada (personalizada)'}</div></div>
+      {me && <Confirm e={e} ms={ms} me={me} onToggle={onConfirm} />}
+      <div className="grow"><div>{e.description}{e.is_deleted && ' (retirada)'}{e.extraordinary && <span className="warn small"> · extraordinária</span>} <Mark s={s} /></div>
+        <div className="dim small">{ptDate(e.date)} · {e.category} · pagou {nameOf(ms, e.paid_by)} · {e.type === 'pessoal' ? 'pessoal' : e.split_mode === '50/50' ? 'partilhada 50/50' : 'partilhada (personalizada)'}</div>
+        {e.reason && <div className="small warn">razão: {e.reason}</div>}</div>
       <span className="num">{eur(e.amount_cents)}</span>
       {e.receipt_path && <button className="link" aria-label="Ver talão" onClick={() => openReceipt(e.receipt_path!)}>🧾</button>}
       {onEdit && !e.is_deleted && <button onClick={onEdit} aria-label={`Editar ${e.description}`}>Editar</button>}
@@ -423,6 +435,9 @@ function Month(p: Ctx & PanelProps) {
   const day = new Date().getDate(); const edge = day <= 7 || day >= 25;
   const list = data.expenses.filter((e) => (showGone || !e.is_deleted) && (who === 'todas' || (who === 'conjuntas' ? e.type === 'partilhada' : e.type === 'pessoal' && e.paid_by === me)));
   const confirmS = (id: string) => mutate('Liquidação confirmada.', 'settlements', 'patch', id, { confirmed: true });
+  const confirmE = (e: Expense) => mutate(e.confirmed_by ? 'Confirmação retirada.' : 'Valor confirmado.', 'expenses', 'patch', e.id, e.confirmed_by ? { confirmed_by: null, confirmed_at: null } : { confirmed_by: me, confirmed_at: new Date().toISOString() });
+  const ym = todayIso().slice(0, 7); const cc = confirmCount(data.expenses, ym);
+  const pend = data.expenses.filter((e) => !e.is_deleted && e.type === 'partilhada' && !e.confirmed_by && e.paid_by !== me).length;
   return (
     <>
       <BalanceCard data={data} state={p.state} />
@@ -435,7 +450,8 @@ function Month(p: Ctx & PanelProps) {
       <div className="seg" role="radiogroup" aria-label="Filtro">{(['todas', 'conjuntas', 'minhas'] as const).map((k) => <button key={k} role="radio" aria-checked={who === k} className={who === k ? 'pri' : ''} onClick={() => setWho(k)}>{k[0].toUpperCase() + k.slice(1)}</button>)}</div>
       {panel === 'despesa' && p.editing && <ExpenseForm {...p} close={() => setPanel('')} />}
       <h3>despesas · {list.length}</h3>
-      {list.length ? <ul className="list">{list.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} onEdit={() => p.openExpense(e)} />)}</ul> : <p className="dim">Sem despesas.</p>}
+      {cc.total > 0 && <p className="small"><span className={cc.done === cc.total ? 'ok' : 'warn'}>{cc.done} de {cc.total} confirmadas</span><span className="dim"> este mês{pend ? ` · ${pend} à espera de ti (toca ○)` : ''}</span></p>}
+      {list.length ? <ul className="list">{list.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} me={me} onConfirm={confirmE} onEdit={() => p.openExpense(e)} />)}</ul> : <p className="dim">Sem despesas.</p>}
       <label className="check small dim"><input type="checkbox" checked={showGone} onChange={(e) => setShowGone(e.target.checked)} /> mostrar retiradas</label>
       {!panel && !edge && <button className="link" onClick={() => setPanel('fechar')}>fechar mês</button>}
       <h3>liquidações</h3>

@@ -1,3 +1,4 @@
+import { confirmCount } from './lib/anomaly';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import type { FamilyData } from './lib/useFamily';
@@ -204,6 +205,8 @@ export function CloseMonth({ data, extra, mutate, online, close }: { data: Famil
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { setErr('Não consegui copiar; seleciona o texto.'); }
   };
   const paid = async () => {
+    const cc = confirmCount(data.expenses, ym);
+    if (cc.done < cc.total && !confirm(`Há ${cc.total - cc.done} de ${cc.total} despesas de ${mesNome(ym)} por confirmar. Fechar mesmo assim?`)) return;
     if (!confirm(`Confirmas que ${names[c.debtor ?? ''] ?? ''} já pagou ${eur(c.paid)} e queres fechar ${mesNome(ym)}?`)) return;
     setErr(''); const fid = data.me!.family_id; let sid: string | null = null;
     if (c.debtor && c.paid > 0) {
@@ -223,6 +226,7 @@ export function CloseMonth({ data, extra, mutate, online, close }: { data: Famil
       <div className="row between"><h2>Fechar mês</h2><button className="link" onClick={close}>cancelar</button></div>
       <div className="seg">{[prevYm(prevYm(cur)), prevYm(cur), cur].map((m) => <button key={m} className={ym === m ? 'pri' : ''} onClick={() => setYm(m)}>{mesNome(m)}{closed.has(m) ? ' ✓' : ''}</button>)}</div>
       {already && <p className="ok small">{mesNome(ym)} já está fechado.</p>}
+      {(() => { const cc = confirmCount(data.expenses, ym); return cc.done < cc.total ? <p className="warn small">⚠ {cc.total - cc.done} de {cc.total} despesas por confirmar neste mês.</p> : null; })()}
       <ul className="list ios">{ids.map((id) => <li key={id} className="li">
         <span className="grow">Lista {names[id]}<span className="dim small block">já a metade{carryIn?.creditor === id ? ` · inclui «mês ${mesNome(prevYm(ym))}» ${eur(carryIn.carry_cents)}` : ''}</span></span>
         <input className="num amt" inputMode="decimal" aria-label={`Lista de ${names[id]}`} value={over[id] ?? centsToInput(lists[id])} onChange={(e) => setOver({ ...over, [id]: e.target.value })} /></li>)}</ul>
