@@ -1,3 +1,5 @@
+const APP_V = 'fs-v18';
+import { matchExpense } from './lib/search';
 import { confirmCount } from './lib/anomaly';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -225,7 +227,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
         {tab === 'compras' && <Shopping {...ctx} />}
         {tab === 'fixas' && <Bills {...ctx} />}
         <Suspense fallback={<p className="dim">A carregar…</p>}>{tab === 'resumo' && <History data={data} refetch={refetch} online={online} extra={extra} />}
-        {tab === 'defs' && <Settings {...ctx} theme={theme} setTheme={setTheme} />}</Suspense>
+        {tab === 'defs' && <><Settings {...ctx} theme={theme} setTheme={setTheme} /><p className="small dim" style={{ textAlign: 'center' }}>versão {APP_V}</p></>}</Suspense>
       </main>
       <nav className="tabs" aria-label="Navegação">
         {([['mes', 'mês'], ['compras', 'compras'], ['fixas', 'fixas'], ['resumo', 'resumo']] as [Tab, string][]).map(([k, l]) => (
@@ -445,7 +447,8 @@ function Month(p: Ctx & PanelProps) {
   const [rc, setRc] = useState<ReceiptResult | null>(null);
   const [showGone, setShowGone] = useState(false); const [who, setWho] = useState<'todas' | 'conjuntas' | 'minhas'>('todas');
   const day = new Date().getDate(); const edge = day <= 7 || day >= 25;
-  const list = data.expenses.filter((e) => (showGone || !e.is_deleted) && (who === 'todas' || (who === 'conjuntas' ? e.type === 'partilhada' : e.type === 'pessoal' && e.paid_by === me)));
+  const [q, setQ] = useState('');
+  const list = data.expenses.filter((e) => (showGone || !e.is_deleted) && (who === 'todas' || (who === 'conjuntas' ? e.type === 'partilhada' : e.type === 'pessoal' && e.paid_by === me)) && matchExpense(e, q));
   const confirmS = (id: string) => mutate('Liquidação confirmada.', 'settlements', 'patch', id, { confirmed: true });
   const confirmE = (e: Expense) => mutate(e.confirmed_by ? 'Confirmação retirada.' : 'Valor confirmado.', 'expenses', 'patch', e.id, e.confirmed_by ? { confirmed_by: null, confirmed_at: null } : { confirmed_by: me, confirmed_at: new Date().toISOString() });
   const ym = todayIso().slice(0, 7); const cc = confirmCount(data.expenses, ym);
@@ -461,7 +464,8 @@ function Month(p: Ctx & PanelProps) {
       <PorLancar data={data} extra={p.extra} mutate={mutate as never} online={p.online} />
       <div className="seg" role="radiogroup" aria-label="Filtro">{(['todas', 'conjuntas', 'minhas'] as const).map((k) => <button key={k} role="radio" aria-checked={who === k} className={who === k ? 'pri' : ''} onClick={() => setWho(k)}>{k[0].toUpperCase() + k.slice(1)}</button>)}</div>
       {panel === 'despesa' && p.editing && <div ref={(el) => { if (el && el.dataset.id !== p.editing!.id) { el.dataset.id = p.editing!.id; el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }}><ExpenseForm key={p.editing.id} {...p} close={() => setPanel('')} /></div>}
-      <h3>despesas · {list.length}</h3>
+      <input className="search" type="search" inputMode="search" aria-label="Procurar despesa" placeholder="Procurar (ex.: mercadona, 80)" value={q} onChange={(e) => setQ(e.target.value)} />
+      <h3>despesas · {list.length}{q && ` de ${data.expenses.filter((e) => !e.is_deleted).length}`}</h3>
       {cc.total > 0 && <p className="small"><span className={cc.done === cc.total ? 'ok' : 'warn'}>{cc.done} de {cc.total} confirmadas</span><span className="dim"> este mês{pend ? ` · ${pend} à espera de ti (toca ○)` : ''}</span></p>}
       {list.length ? <ul className="list">{list.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} me={me} onConfirm={confirmE} onEdit={() => p.openExpense(e)} />)}</ul> : <p className="dim">Sem despesas.</p>}
       <label className="check small dim"><input type="checkbox" checked={showGone} onChange={(e) => setShowGone(e.target.checked)} /> mostrar retiradas</label>
