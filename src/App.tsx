@@ -1,4 +1,4 @@
-const APP_V = 'fs-v21';
+const APP_V = 'fs-v22';
 import { matchExpense } from './lib/search';
 import { settlementEffect, payerTone, groupByCategory, paidBy } from './lib/view';
 import { confirmCount } from './lib/anomaly';

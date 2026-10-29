@@ -27,20 +27,23 @@ export function parseDate(text: string, today = new Date()): string | null {
   return null;
 }
 
-const KEY = /\b(total\s*a\s*pagar|a\s*pagar|total)\b/i;
+const KEY = /\b(t[o0]ta[l1i|]\s*a\s*pagar|a\s*pagar|t[o0]ta[l1i|])\b/i;
 const NOT = /sub\s*-?total|iva|taxa|poupan|desconto|troco|entregue|n\.?\s*º?\s*artigos|base|cart(a|ã)o\s+cliente|saldo/i;
 export function parseTotal(text: string): number | null {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const cands: { v: number; w: number }[] = [];
   lines.forEach((l, i) => {
     if (!KEY.test(l) || NOT.test(l)) return;
-    const w = /total\s*a\s*pagar|a\s*pagar/i.test(l) ? 3 : 2;
+    const w = /a\s*pagar/i.test(l) ? 3 : 2;
     for (const v of amounts(l)) cands.push({ v, w });
     if (!amounts(l).length && lines[i + 1]) for (const v of amounts(lines[i + 1])) cands.push({ v, w: w - 0.5 });
   });
   const ok = cands.filter((c) => c.v > 0 && c.v < 500000);
   if (ok.length) return ok.sort((a, b) => b.w - a.w || b.v - a.v)[0].v;
-  return null;
+  // Sem linha TOTAL legível: o maior valor que aparece pelo menos 2 vezes (total + pagamento), senão nada.
+  const all = lines.filter((l) => !NOT.test(l)).flatMap(amounts).filter((v) => v > 0 && v < 500000);
+  const rep = all.filter((v, i) => all.indexOf(v) !== i);
+  return rep.length ? Math.max(...rep) : null;
 }
 
 export function parseStore(text: string): string | null {
