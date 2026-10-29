@@ -1,4 +1,5 @@
-const APP_V = 'fs-v23';
+import { IcGear, IcPlus } from './Icons';
+const APP_V = 'fs-v24';
 import { matchExpense } from './lib/search';
 import { settlementEffect, payerTone, groupByCategory, paidBy } from './lib/view';
 import { confirmCount } from './lib/anomaly';
@@ -216,7 +217,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
         {status === 'error' ? <span className="err">Falha a sincronizar: {msg(error)}</span>
           : <>{online ? 'Sincronizado' : 'Última sincronização'} {syncedAt?.toLocaleString('pt-PT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{live && online ? ' · tempo real' : ''}</>}
         {pendingN > 0 && <span className="warn"> · {pendingN} por sincronizar{syncing && online ? ' (a enviar…)' : ''}</span>}
-        <button className={'gear' + (tab === 'defs' ? ' on' : '')} aria-label="Definições" onClick={() => { setTab('defs'); setPanel(''); }}>⚙</button>
+        <button className={'gear' + (tab === 'defs' ? ' on' : '')} aria-label="Definições" onClick={() => { setTab('defs'); setPanel(''); }}><IcGear /></button>
       </div>
       <InstallSheet editing={!!panel} />
       {toast && <div className={'banner ' + toast.kind} role={toast.kind === 'bad' ? 'alert' : 'status'}>{toast.text}{toast.kind === 'bad' && <button className="x" aria-label="Fechar" onClick={() => setToast(null)}>×</button>}</div>}
@@ -261,7 +262,7 @@ function BalanceCard({ data, state }: { data: FamilyData; state: Ctx['state'] })
       <div><Money c={b.debt?.cents ?? 0} className="big" /></div>
       <div className="dim">{b.debt ? `${nameOf(data.members, b.debt.from)} → ${nameOf(data.members, b.debt.to)}` : 'contas certas'}</div>
       {[...data.expenses, ...data.settlements].some((r) => state[r.id]) && <div className="warn small">inclui alterações por sincronizar</div>}
-      {data.members.length < 2 && <div className="warn small">falta a segunda pessoa · código em ⚙</div>}
+      {data.members.length < 2 && <div className="warn small">falta a segunda pessoa · código nas definições</div>}
     </div>
   );
 }
@@ -472,7 +473,7 @@ function Month(p: Ctx & PanelProps) {
       {!panel && edge && <button className="wide" onClick={() => setPanel('fechar')}>fechar mês</button>}
       {panel === 'despesa' && !p.editing ? <ExpenseForm key={rc ? 'rc' : vc ? 'v' + vc.text : 'n'} {...p} receipt={rc} voice={vc} close={() => { setRc(null); setVc(null); setPanel(''); }} />
         : (!panel || panel === 'talao' || panel === 'voz') && <div className="acts">
-          <button className="act pri" onClick={() => { setRc(null); setVc(null); p.openExpense(null); }}><span className="ic" aria-hidden>+</span>Despesa</button>
+          <button className="act pri" onClick={() => { setRc(null); setVc(null); p.openExpense(null); }}><span className="ic"><IcPlus /></span>Despesa</button>
           <ReceiptButton big={panel === 'talao'} onResult={(r) => { setRc(r); setVc(null); p.openExpense(null); }} />
           <VoiceButton key={panel} auto={panel === 'voz'} big={panel === 'voz'} onResult={(g) => { setRc(null); setVc(g); p.openExpense(null); }} /></div>}
       {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={mutate as never} online={p.online} close={() => setPanel('')} />}

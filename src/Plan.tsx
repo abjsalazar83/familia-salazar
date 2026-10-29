@@ -1,3 +1,4 @@
+import { IcX } from './Icons';
 import { confirmCount } from './lib/anomaly';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
@@ -91,7 +92,7 @@ export function Savings({ data, extra, spent = 0, projected = 0, online, setting
               <div className="dim small">rendimentos {eur(income)} − despesas {eur(spent)}</div></>}
         </div>
       </div>
-      {!edit ? <p className="dim small">rendimentos e objetivo em ⚙</p> : <div className="form">
+      {!edit ? <p className="dim small">rendimentos e objetivo nas definições</p> : <div className="form">
         {data.members.map((m) => <label key={m.id} className="fld"><span>{m.display_name} · líquido {mesNome(ym)}</span>
           <input inputMode="decimal" className="num" value={vals[m.id] ?? ''} placeholder="0,00" onChange={(e) => setVals({ ...vals, [m.id]: e.target.value })} /></label>)}
         <label className="fld"><span>objetivo de poupança / mês</span><input inputMode="decimal" className="num" value={goal} onChange={(e) => setGoal(e.target.value)} /></label>
@@ -284,6 +285,6 @@ export function PorLancar({ data, extra, mutate, online }: { data: FamilyData; e
       <span className="grow"><span className="t2">{x.p.name}</span><span className="dim small block">{ptDate(x.date)} · {x.p.kind === 'pessoal' ? 'pessoal ' + (names[x.p.owner_member ?? ''] ?? '') : 'conjunta 50/50'}</span></span>
       <input className="num amt" inputMode="decimal" aria-label={`Valor de ${x.p.name}`} placeholder="valor" value={vals[key(x)] ?? (x.amount != null ? centsToInput(x.amount) : '')} onChange={(e) => setVals({ ...vals, [key(x)]: e.target.value })} />
       <button className="pri" disabled={busy === key(x)} onClick={() => post(x)}>lançar</button>
-      <button className="dim" aria-label="Já registado" title="já registado" disabled={!online} onClick={() => skip(x)}>✕</button>
+      <button className="dim" aria-label="Já registado" title="já registado" disabled={!online} onClick={() => skip(x)}><IcX /></button>
     </li>)}</ul>{err && <p className="err small">{err}</p>}</section>);
 }

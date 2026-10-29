@@ -1,3 +1,4 @@
+import { IcMic } from './Icons';
 import { useEffect, useRef, useState } from 'react';
 import { parseVoice, type VoiceGuess } from './lib/voice';
 
@@ -37,7 +38,7 @@ export function VoiceButton({ onResult, auto, big }: { onResult: (g: VoiceGuess)
   return (
     <>
       <button className={'act' + (on ? ' rec' : '') + (big ? ' pri' : '')} aria-pressed={on} aria-label={on ? 'A ouvir — toca para parar' : 'Despesa por voz'}
-        onClick={() => (on ? rec.current?.abort() : start())}><span className="ic" aria-hidden>🎤</span>{on ? 'A ouvir…' : 'Voz'}</button>
+        onClick={() => (on ? rec.current?.abort() : start())}><span className="ic"><IcMic /></span>{on ? 'A ouvir…' : 'Voz'}</button>
       {(on || heard) && <p className="dim small act-x" aria-live="polite">{heard ? `«${heard}»` : 'Diz, por exemplo: «Mercadona 80 euros e 30, pagou a Ana»'}</p>}
       {err && <p className="err small act-x" role="alert">{err}</p>}
     </>

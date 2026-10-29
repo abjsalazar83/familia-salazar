@@ -12,6 +12,7 @@ import { monthFlags, monthTotals, type Flag } from './lib/anomaly';
 import { THEMES, type ThemeId } from './themes';
 import { crossings, usage } from './lib/budget';
 import { disableLock, enableLock, lockAvailable, lockEnabled, shouldLock, unlock } from './lib/lock';
+import Overview from './Overview';
 import { msg, displayMode, LimitsEdit, Limits, Notes, type Ctx } from './App';
 
 function Bars({ items, avg, height = 120 }: { items: { label: string; v: number; dim?: boolean }[]; avg?: number; height?: number }) {
@@ -97,9 +98,11 @@ export default function History({ data, refetch, online, extra }: { data: Family
   return (
     <>
       <div className="seg" role="radiogroup" aria-label="Período">{[12, 24, 60].map((k) => <button key={k} role="radio" aria-checked={n === k} className={n === k ? 'pri' : ''} onClick={() => setN(k)}>{k}m</button>)}</div>
+      <Overview data={data} extra={extra} />
+      <h3>histórico · {n} meses</h3>
       {a && <div className="kpi">
-        <div><span className="big num">{eur(a.total)}</span><span className="dim per">/mês · {eur(a.total * 12)}/ano</span></div>
-        <div className="dim small">{eur(a.noExtra)}/mês sem extraordinários · {ymLabel(a.from)}–{ymLabel(a.to)}</div>
+        <div><span className="big num">{eur(a.total)}</span><span className="dim per">/mês</span></div>
+        <div className="dim small">{eur(a.total * 12)}/ano · {eur(a.noExtra)}/mês sem extraordinários · {ymLabel(a.from)}–{ymLabel(a.to)}</div>
       </div>}
       <Bars height={70} items={last.map((m) => ({ label: ymLabel(m.ym), v: m.total_cents, dim: m.provisional }))} avg={a?.total} />
       <div className="axis dim small"><span>{ymLabel(last[0].ym)}</span><span>┄ média</span><span>{ymLabel(last[last.length - 1].ym)}</span></div>
@@ -117,11 +120,6 @@ export default function History({ data, refetch, online, extra }: { data: Family
       <h3>quanto custa · €/mês · €/ano · % · vs {n}m antes</h3>
       <table className="t"><tbody>{cats.map((c) => <tr key={c.cat}>
         <td>{c.cat}<i style={{ width: (c.month / cats[0].month) * 100 + '%' }} /></td><td className="num">{eur(c.month)}</td><td className="num dim">{eur(c.year).replace(',00', '')}</td><td className="num dim">{c.pct}%</td><td className="num">{tr(c.trend)}</td></tr>)}</tbody></table>
-
-      {a && fixedSrc.length > 0 && <><h3>fixas vs variáveis</h3>
-        <div className="split"><i style={{ width: Math.min(100, (fv.fixed / Math.max(1, a.total)) * 100) + '%' }} /></div>
-        <div className="kv"><span>fixas <span className="num">{eur(fv.fixed)}</span></span><span>variáveis <span className="num">{eur(fv.variable)}</span></span></div>
-        <p className="dim small">fixas = {v7 ? 'pagamentos conjuntos' : 'contas recorrentes'} com valor{fv.estimated ? ' (inclui estimativas ≈)' : ''}{fv.unknown ? ` · ${fv.unknown} por registar` : ''} · variáveis = média − fixas</p></>}
 
       {tips.length > 0 && <><h3>onde poupar</h3>
         <ul className="list">{tips.map((t, k) => <li key={k} className="li"><div className="grow"><div>{t.title}</div><div className="dim small">{t.detail}</div></div>

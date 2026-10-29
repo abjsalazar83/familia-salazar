@@ -178,3 +178,39 @@ img, svg, table { max-width: 100%; }
 .per { margin-left: 4px; }
 .kpi .big + .per, .big.num + .per { margin-left: 4px; }
 @media (max-width: 380px) { .grp-n { display: none; } }
+/* fs-v24 ícones de linha */
+.icn { display: block; flex: none; }
+.act .ic { display: inline-flex; width: auto; font-size: inherit; transform: none; }
+.act.pri .ic { font-size: inherit; transform: none; }
+.gear .icn { width: 22px; height: 22px; }
+/* fs-v24 resumo visual */
+.ov h3 { margin-top: 26px; }
+.hero { padding: 10px 0 4px; } .hero .big { font-size: 44px; line-height: 1.1; margin: 2px 0 4px; } .hero b { font-weight: 600; }
+.spark { display: block; width: 100%; height: 56px; margin-top: 14px; overflow: visible; }
+.spark .sl { fill: none; stroke: var(--acc); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-dasharray: 1; stroke-dashoffset: 1; animation: fs-draw .9s ease-out forwards; }
+.spark .sa { fill: var(--acc); opacity: .1; } .spark .sd { fill: var(--acc); }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); margin-top: 18px; }
+.tiles > div { background: var(--card); border-radius: var(--r-btn); padding: 12px 14px; }
+.t2 { font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+.infl p { margin: 0 0 6px; line-height: 1.45; }
+.catv { display: grid; grid-template-columns: 112px 1fr; gap: 16px; align-items: center; }
+.donut, .ring { width: 100%; transform: rotate(0); }
+.donut .dt, .ring .dt { fill: none; stroke: var(--fill); stroke-width: 5; }
+.donut .ds { fill: none; stroke-width: 5; animation: fs-fade .6s ease-out both; }
+.ring { width: 64px; flex: none; } .ring .rv { fill: none; stroke-width: 4; stroke-linecap: round; transition: stroke-dasharray .6s; }
+.ring .okc { stroke: var(--ok, var(--pos)); } .ring .warnc { stroke: var(--warn); }
+.legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; font-size: 14px; }
+.legend li { display: flex; align-items: center; gap: 8px; } .legend .small { min-width: 52px; text-align: right; }
+.legend i, .sw { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; margin-right: 6px; }
+.legend i { margin: 0; }
+.c0 { stroke: var(--acc); background: var(--acc); } .c1 { stroke: var(--pn); background: var(--pn); } .c2 { stroke: var(--warn); background: var(--warn); }
+.c3 { stroke: var(--pos); background: var(--pos); } .c4 { stroke: var(--dim); background: var(--dim); } .c5 { stroke: var(--neg); background: var(--neg); }
+.sav { display: flex; align-items: center; gap: 16px; }
+.bar2 { display: flex; gap: 3px; height: 10px; margin: 10px 0 8px; } .bar2 i { border-radius: 5px; min-width: 3px; animation: fs-grow .6s ease-out both; transform-origin: left; }
+.fx { background: var(--acc); } .vr { background: var(--fill); outline: 1px solid var(--dim); outline-offset: -1px; opacity: .8; }
+.pa { background: var(--pa); } .pn { background: var(--pn); }
+.fade { animation: fs-fade .45s ease-out both; }
+@keyframes fs-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes fs-draw { to { stroke-dashoffset: 0; } }
+@keyframes fs-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { .fade, .spark .sl, .bar2 i, .donut .ds { animation: none; stroke-dashoffset: 0; } }

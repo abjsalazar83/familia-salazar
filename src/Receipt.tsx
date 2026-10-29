@@ -1,3 +1,4 @@
+import { IcCamera } from './Icons';
 // Talão → texto no próprio telemóvel (Tesseract.js, carregado só quando se usa; ficheiros servidos pela app).
 import { useRef, useState } from 'react';
 import { parseReceipt, type ReceiptGuess } from './lib/receipt';
@@ -81,7 +82,7 @@ export function ReceiptButton({ onResult, big }: { onResult: (r: ReceiptResult) 
   return (<>
     <input ref={cam} type="file" accept="image/*" capture="environment" hidden onChange={(e) => go(e.target.files?.[0])} />
     <input ref={gal} type="file" accept="image/jpeg,image/png,image/webp,image/*" hidden onChange={(e) => go(e.target.files?.[0])} />
-    <button className={'act' + (big ? ' pri' : '')} disabled={!!prog} aria-label={prog ?? 'Ler talão'} onClick={() => cam.current?.click()}><span className="ic" aria-hidden>📷</span>{prog ? 'A ler…' : 'Talão'}</button>
+    <button className={'act' + (big ? ' pri' : '')} disabled={!!prog} aria-label={prog ?? 'Ler talão'} onClick={() => cam.current?.click()}><span className="ic"><IcCamera /></span>{prog ? 'A ler…' : 'Talão'}</button>
     {prog && <div className="bar act-x" aria-hidden><i style={{ width: (Number(prog.match(/(\d+)%/)?.[1]) || 5) + '%' }} /></div>}
     {!prog && <button className="link small act-x" onClick={() => gal.current?.click()}>ou escolher foto da galeria</button>}
     {prog && <p className="dim small act-x" aria-live="polite">{prog}</p>}
