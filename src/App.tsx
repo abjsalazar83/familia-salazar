@@ -1,4 +1,4 @@
-const APP_V = 'fs-v20';
+const APP_V = 'fs-v21';
 import { matchExpense } from './lib/search';
 import { settlementEffect, payerTone, groupByCategory, paidBy } from './lib/view';
 import { confirmCount } from './lib/anomaly';
@@ -11,6 +11,8 @@ import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
 import { CATS, type Bill, type Budget, type Expense, type HistoryMonth, type Item, type Member } from './lib/types';
 import { useExtra, Savings, Upcoming, CloseMonth, Money, NotifySettings, PorLancar, type Extra } from './Plan';
 import { hasV7, monthlyEq } from './lib/plan';
+import { VoiceButton } from './Voice';
+import type { VoiceGuess } from './lib/voice';
 import { ReceiptButton, uploadReceipt, openReceipt, type ReceiptResult } from './Receipt';
 import { averages, byStore, currentPace, costByCategory, fixedVsVariable, monthly, savingTips, ymLabel } from './lib/history';
 import { THEMES, type ThemeId } from './themes';
@@ -162,7 +164,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
     el.addEventListener('touchstart', start, { passive: true }); el.addEventListener('touchend', end, { passive: true });
     return () => { el.removeEventListener('touchstart', start); el.removeEventListener('touchend', end); };
   }, []);
-  const [panel, setPanel] = useState<'' | 'despesa' | 'saldar' | 'fechar' | 'talao'>('');
+  const [panel, setPanel] = useState<'' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz'>('');
   const [editing, setEditing] = useState<Expense | null>(null);
   const [toast, setToast] = useState<Toast>(null);
   const [locked, unlocked] = useLock();
@@ -245,7 +247,7 @@ const describeOp = (o: Op) => `${OPN[o.table]}: ${o.kind === 'create' ? 'novo' :
 export function Mark({ s }: { s?: 'pending' | 'failed' }) {
   return s ? <span className={'tag ' + (s === 'failed' ? 'err' : 'warn')}>{s === 'failed' ? 'Falhou' : 'Por sincronizar'}</span> : null;
 }
-type PanelProps = { panel: '' | 'despesa' | 'saldar' | 'fechar' | 'talao'; setPanel: (p: '' | 'despesa' | 'saldar' | 'fechar' | 'talao') => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
+type PanelProps = { panel: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz'; setPanel: (p: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz') => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
 
 const nameOf = (ms: Member[], id: string) => ms.find((m) => m.id === id)?.display_name ?? '?';
 function useBalance(d: FamilyData) {
@@ -269,13 +271,14 @@ function showRow(id: string) {
   setTimeout(() => { const el = document.getElementById('e-' + id); if (!el) return; el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2200); }, 120);
 }
 
-function ExpenseForm({ data, mutate, editing, close, receipt }: Ctx & { editing: Expense | null; close: () => void; receipt?: ReceiptResult | null }) {
+function ExpenseForm({ data, mutate, editing, close, receipt, voice }: Ctx & { editing: Expense | null; close: () => void; receipt?: ReceiptResult | null; voice?: VoiceGuess | null }) {
   const ms = data.members; const me = data.me!;
   const other = ms.find((m) => m.id !== me.id);
   const [f, setF] = useState(() => editing ? {
     amount: centsToInput(editing.amount_cents), desc: editing.description, cat: editing.category, payer: editing.paid_by,
     type: editing.type, split: editing.split_mode, mine: centsToInput(editing.shares[me.id] ?? 0), date: editing.date, extra: !!editing.extraordinary, reason: editing.reason ?? '',
-  } : { amount: receipt?.guess.total ? centsToInput(receipt.guess.total) : '', desc: receipt?.guess.store ?? '', cat: receipt ? receipt.guess.category ?? 'Outros' : 'Supermercado', payer: me.id, type: (other ? 'partilhada' : 'pessoal') as Expense['type'], split: '50/50' as Expense['split_mode'], mine: '', date: receipt?.guess.date ?? todayIso(), extra: false, reason: '' });
+  } : voice ? { amount: voice.total ? centsToInput(voice.total) : '', desc: voice.store ?? '', cat: voice.category, payer: voice.payer === 'other' && other ? other.id : me.id, type: (other && !voice.personal ? 'partilhada' : 'pessoal') as Expense['type'], split: '50/50' as Expense['split_mode'], mine: '', date: todayIso(), extra: false, reason: '' }
+  : { amount: receipt?.guess.total ? centsToInput(receipt.guess.total) : '', desc: receipt?.guess.store ?? '', cat: receipt ? receipt.guess.category ?? 'Outros' : 'Supermercado', payer: me.id, type: (other ? 'partilhada' : 'pessoal') as Expense['type'], split: '50/50' as Expense['split_mode'], mine: '', date: receipt?.guess.date ?? todayIso(), extra: false, reason: '' });
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const cents = parseCents(f.amount);
   const mine = parseCents(f.mine || '0');
@@ -312,6 +315,7 @@ function ExpenseForm({ data, mutate, editing, close, receipt }: Ctx & { editing:
   return (
     <div className="form">
       <h2>{editing ? 'Editar despesa' : receipt ? 'Confirmar talão' : 'Nova despesa'}</h2>
+      {voice && <p className="dim small">Ouvi «{voice.text}». Confirma valor, descrição, quem pagou e divisão antes de guardar.</p>}
       {receipt && <p className="dim small">Lido do talão: confirma valor, loja e data antes de guardar. A foto fica privada da família.</p>}
       <Field label="Quanto? (€)"><input className="num" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="0,00" autoFocus={!editing} /></Field>
       <Field label="O quê?"><input value={f.desc} maxLength={200} onChange={(e) => setF({ ...f, desc: e.target.value })} /></Field>
@@ -450,7 +454,7 @@ export function Notes({ notes }: { notes: FamilyData['notes'] }) {
 
 function Month(p: Ctx & PanelProps) {
   const { data, panel, setPanel, mutate } = p; const me = data.me!.id;
-  const [rc, setRc] = useState<ReceiptResult | null>(null);
+  const [rc, setRc] = useState<ReceiptResult | null>(null); const [vc, setVc] = useState<VoiceGuess | null>(null);
   const [showGone, setShowGone] = useState(false); const [who, setWho] = useState<'tudo' | 'eu' | 'outro'>('tudo');
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const day = new Date().getDate(); const edge = day <= 7 || day >= 25;
@@ -466,9 +470,10 @@ function Month(p: Ctx & PanelProps) {
     <>
       <BalanceCard data={data} state={p.state} />
       {!panel && edge && <button className="wide" onClick={() => setPanel('fechar')}>fechar mês</button>}
-      {panel === 'despesa' && !p.editing ? <ExpenseForm key={rc ? 'rc' : 'n'} {...p} receipt={rc} close={() => { setRc(null); setPanel(''); }} />
-        : (!panel || panel === 'talao') && <div className="row2"><button className="pri wide" onClick={() => { setRc(null); p.openExpense(null); }}>+ despesa</button>
-          <div><ReceiptButton big={panel === 'talao'} onResult={(r) => { setRc(r); p.openExpense(null); }} /></div></div>}
+      {panel === 'despesa' && !p.editing ? <ExpenseForm key={rc ? 'rc' : vc ? 'v' + vc.text : 'n'} {...p} receipt={rc} voice={vc} close={() => { setRc(null); setVc(null); setPanel(''); }} />
+        : (!panel || panel === 'talao' || panel === 'voz') && <><div className="row2"><button className="pri wide" onClick={() => { setRc(null); setVc(null); p.openExpense(null); }}>+ despesa</button>
+          <div><ReceiptButton big={panel === 'talao'} onResult={(r) => { setRc(r); setVc(null); p.openExpense(null); }} /></div></div>
+          <VoiceButton key={panel} auto={panel === 'voz'} big={panel === 'voz'} onResult={(g) => { setRc(null); setVc(g); p.openExpense(null); }} /></>}
       {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={mutate as never} online={p.online} close={() => setPanel('')} />}
       <PorLancar data={data} extra={p.extra} mutate={mutate as never} online={p.online} />
       <div className="sumbar" aria-live="polite"><span className="pay-blue">Pagaste {eur(paid[me] ?? 0)}</span> · <span className="pay-pink">{otherN} pagou {eur(otherM ? paid[otherM.id] ?? 0 : 0)}</span> · <b>{!bal.debt ? 'contas certas' : bal.debt.to === me ? `${otherN} deve-te ${eur(bal.debt.cents)}` : `Deves ${eur(bal.debt.cents)} a ${otherN}`}</b></div>

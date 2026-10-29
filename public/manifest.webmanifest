@@ -52,6 +52,18 @@
       ]
     },
     {
+      "name": "Despesa por voz",
+      "short_name": "Voz",
+      "url": "./?acao=voz",
+      "icons": [
+        {
+          "src": "sc-despesa.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
       "name": "Ler talão",
       "short_name": "Talão",
       "url": "./?acao=talao",
@@ -70,18 +82,6 @@
       "icons": [
         {
           "src": "sc-compras.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "Saldo e saldar",
-      "short_name": "Saldo / Saldar",
-      "url": "./?acao=saldar",
-      "icons": [
-        {
-          "src": "sc-saldo.png",
           "sizes": "96x96",
           "type": "image/png"
         }

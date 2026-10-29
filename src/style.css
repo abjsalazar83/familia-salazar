@@ -158,3 +158,6 @@ img, svg, table { max-width: 100%; }
 .grp-b { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .32s var(--ease); } .grp.open .grp-b { grid-template-rows: 1fr; }
 .grp-b > div { overflow: hidden; } .grp .list { border-radius: 0; border-top: .5px solid var(--line); }
 @media (prefers-reduced-motion: reduce) { .grp-b, .grp .chev { transition: none; } }
+.voice { margin: 8px 0; } .voice button.rec { color: var(--bad); animation: fs-pulse 1.2s ease-in-out infinite; }
+@keyframes fs-pulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .voice button.rec { animation: none; } }

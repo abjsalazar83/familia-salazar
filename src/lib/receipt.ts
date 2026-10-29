@@ -1,7 +1,7 @@
 // Leitura de talões portugueses a partir do texto do OCR. Só sugere: o utilizador confirma sempre.
 export type ReceiptGuess = { store: string | null; category: string | null; date: string | null; total: number | null };
 
-const STORES: [RegExp, string][] = [
+export const STORES: [RegExp, string][] = [
   [/mercadona/i, 'Mercadona'], [/continente/i, 'Continente'], [/pingo\s*doce/i, 'Pingo Doce'], [/\blidl\b/i, 'Lidl'], [/\baldi\b/i, 'Aldi'],
   [/interm(a|á)rch(e|é)/i, 'Intermarché'], [/auchan|jumbo/i, 'Auchan'], [/minipre(c|ç)o|\bdia\b/i, 'Minipreço'], [/el\s*corte\s*ingl/i, 'El Corte Inglés'],
 ];
