@@ -48,8 +48,14 @@ export function upcoming(ps: Payment[], today: string, soonDays = 7): Upcoming[]
 export const monthlyEq = (p: Payment, today: string) => { const t = termsAt(p, today); return t.amount == null ? null : Math.round(t.amount / STEP[t.period]); };
 
 /** Lista (já a metade) de cada pessoa: o que pagou por conta dos outros nas despesas partilhadas do mês. */
-export function halvedLists(members: string[], exps: { paid_by: string; amount_cents: number; shares: Record<string, number> | null; date: string; is_deleted: boolean; type?: string }[], ym: string) {
+export function halvedLists(members: string[], exps: { paid_by: string; amount_cents: number; shares: Record<string, number> | null; date: string; is_deleted: boolean; type?: string }[], ym: string, incomes: { amount_cents: number | null; received_by: string; receiver_pct: number; is_deleted: boolean; date: string }[] = []) {
   const out: Record<string, number> = Object.fromEntries(members.map((m) => [m, 0]));
+  // Receita partilhada: a parte do outro entra na lista de quem tem a receber (o não-recebedor).
+  for (const i of incomes) {
+    if (!i || i.is_deleted || i.amount_cents == null || !i.date?.startsWith(ym) || members.length !== 2 || !(i.received_by in out)) continue;
+    const other = members.find((m) => m !== i.received_by)!;
+    out[other] += i.amount_cents - Math.round((i.amount_cents * (i.receiver_pct ?? 50)) / 100);
+  }
   for (const e of exps) {
     if (!e || e.is_deleted || e.type === 'pessoal' || typeof e.date !== 'string' || !e.date.startsWith(ym) || !(e.paid_by in out)) continue;
     const own = e.shares?.[e.paid_by] ?? Math.round(e.amount_cents / 2);

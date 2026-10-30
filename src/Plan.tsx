@@ -192,7 +192,7 @@ export function CloseMonth({ data, extra, mutate, online, close }: { data: Famil
   const closed = new Set(extra.closes.map((c) => c.ym));
   const cur = todayIso().slice(0, 7);
   const [ym, setYm] = useState(() => (closed.has(prevYm(cur)) ? cur : prevYm(cur)));
-  const base = useMemo(() => halvedLists(ids, data.expenses, ym), [ids.join(), data.expenses, ym]);
+  const base = useMemo(() => halvedLists(ids, data.expenses, ym, data.incomes ?? []), [ids.join(), data.expenses, data.incomes, ym]);
   const carryIn = extra.closes.find((c) => c.ym === prevYm(ym) && c.carry_cents > 0);
   const [over, setOver] = useState<Record<string, string>>({});
   const [step, setStep] = useState<'rever' | 'pagar'>('rever'); const [err, setErr] = useState(''); const [copied, setCopied] = useState(false);

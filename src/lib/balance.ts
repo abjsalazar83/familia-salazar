@@ -1,3 +1,4 @@
+import { applyIncomes, type SharedIncome } from './income';
 // Regras financeiras centrais. Todos os valores em cêntimos (inteiros).
 export type ExpenseLike = {
   amount_cents: number;
@@ -34,6 +35,7 @@ export function calculateHouseholdBalance(
   memberIds: string[],
   expenses: ExpenseLike[],
   settlements: SettlementLike[],
+  incomes: Pick<SharedIncome, 'amount_cents' | 'received_by' | 'receiver_pct' | 'is_deleted'>[] = [],
 ): Balance {
   const net: Record<string, number> = {};
   for (const m of memberIds) net[m] = 0;
@@ -48,6 +50,7 @@ export function calculateHouseholdBalance(
     add(s.from_member, s.amount_cents);
     add(s.to_member, -s.amount_cents);
   }
+  applyIncomes(net, incomes);
   let debt: Balance['debt'] = null;
   const ids = Object.keys(net);
   if (ids.length === 2) {

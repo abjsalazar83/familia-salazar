@@ -254,3 +254,11 @@ img, svg, table { max-width: 100%; }
 .empty { padding: 28px 0; }
 @media (prefers-reduced-motion: reduce) { .pop .ck { animation: none; } .it-fg, .ck .icn { transition: none; } }
 .it-more .inline input[type=checkbox] { width: 20px; height: 20px; min-height: 0; margin: 0; padding: 0; flex: none; accent-color: var(--acc); }
+/* ── Receitas partilhadas (fs-v26) ── */
+.inc-ic { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; flex: none; }
+.inc-ic.tone-blue { color: var(--pa); background: color-mix(in srgb, var(--pa) 14%, transparent); }
+.inc-ic.tone-pink { color: var(--pn); background: color-mix(in srgb, var(--pn) 14%, transparent); }
+.li.inc { gap: 10px; align-items: center; }
+.li.inc .plain { background: none; border: 0; padding: 0; text-align: left; color: inherit; font: inherit; min-height: 0; }
+.seg .tone-pink.pri { background: var(--pn); border-color: var(--pn); } .seg .tone-blue.pri { background: var(--pa); border-color: var(--pa); }
+.sumbar.inc-bar { position: static; opacity: .9; font-size: .92em; box-shadow: none; }

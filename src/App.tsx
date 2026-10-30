@@ -1,6 +1,8 @@
 import { IcGear, IcPlus } from './Icons';
 import Shopping from './Shopping';
-const APP_V = 'fs-v25';
+import { IncomeSection, useAutoIncome } from './Incomes';
+import { incomeMonth } from './lib/income';
+const APP_V = 'fs-v26';
 import { matchExpense } from './lib/search';
 import { settlementEffect, payerTone, groupByCategory, paidBy } from './lib/view';
 import { confirmCount } from './lib/anomaly';
@@ -244,7 +246,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
 
 type Mutate = (label: string, table: Table, kind: Op['kind'], id: string, row?: Record<string, unknown>) => Promise<boolean>;
 export type Ctx = { data: FamilyData; run: (l: string, f: () => PromiseLike<{ error: unknown }>) => Promise<boolean>; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; online: boolean; setToast: (t: Toast) => void; extra: Extra };
-const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras', recurring_bills: 'Conta', budgets: 'Limite' };
+const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras', recurring_bills: 'Conta', budgets: 'Limite', shared_incomes: 'Receita', income_rules: 'Receita fixa' };
 const describeOp = (o: Op) => `${OPN[o.table]}: ${o.kind === 'create' ? 'novo' : o.kind === 'delete' ? 'apagar' : 'alterar'}${o.row.description ? ' «' + o.row.description + '»' : o.row.name ? ' «' + o.row.name + '»' : ''}`;
 export function Mark({ s }: { s?: 'pending' | 'failed' }) {
   return s ? <span className={'tag ' + (s === 'failed' ? 'err' : 'warn')}>{s === 'failed' ? 'Falhou' : 'Por sincronizar'}</span> : null;
@@ -253,7 +255,7 @@ type PanelProps = { panel: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz
 
 const nameOf = (ms: Member[], id: string) => ms.find((m) => m.id === id)?.display_name ?? '?';
 function useBalance(d: FamilyData) {
-  return useMemo(() => calculateHouseholdBalance(d.members.map((m) => m.id), d.expenses, d.settlements), [d]);
+  return useMemo(() => calculateHouseholdBalance(d.members.map((m) => m.id), d.expenses, d.settlements, d.incomes ?? []), [d]);
 }
 
 function BalanceCard({ data, state }: { data: FamilyData; state: Ctx['state'] }) {
@@ -262,7 +264,7 @@ function BalanceCard({ data, state }: { data: FamilyData; state: Ctx['state'] })
     <div className="card balance" aria-live="polite">
       <div><Money c={b.debt?.cents ?? 0} className="big" /></div>
       <div className="dim">{b.debt ? `${nameOf(data.members, b.debt.from)} → ${nameOf(data.members, b.debt.to)}` : 'contas certas'}</div>
-      {[...data.expenses, ...data.settlements].some((r) => state[r.id]) && <div className="warn small">inclui alterações por sincronizar</div>}
+      {[...data.expenses, ...data.settlements, ...(data.incomes ?? [])].some((r) => state[r.id]) && <div className="warn small">inclui alterações por sincronizar</div>}
       {data.members.length < 2 && <div className="warn small">falta a segunda pessoa · código nas definições</div>}
     </div>
   );
@@ -374,7 +376,7 @@ function SettleForm({ data, mutate, close }: Ctx & { close: () => void }) {
   };
   return (
     <div className="form">
-      <h2>saldar conta</h2>
+      <h2>acerto já feito</h2>
       <span className="lab">Quem pagou?</span>
       <div className="seg" role="radiogroup" aria-label="Quem pagou?">{ms.map((m) => <button key={m.id} role="radio" aria-checked={from === m.id} className={from === m.id ? 'pri' : ''} onClick={() => setFrom(m.id)}>{m.display_name}</button>)}</div>
       <p className="dim small">Recebe: {nameOf(ms, to)}</p>
@@ -384,9 +386,9 @@ function SettleForm({ data, mutate, close }: Ctx & { close: () => void }) {
         <Field label="Método (opcional)"><input value={method} maxLength={40} onChange={(e) => setMethod(e.target.value)} placeholder="MB WAY, transferência, numerário…" /></Field>
       </details>
       <label className="check"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /> Confirmo que o dinheiro já foi recebido</label>
-      <p className="dim small">A app não faz pagamentos. Só conta no saldo depois de confirmada.</p>
+      <p className="dim small">A app não faz pagamentos. Regista uma transferência já feita; desconta no saldo depois de confirmada e fica no histórico (conta uma só vez).</p>
       {err && <p className="err" role="alert">{err}</p>}
-      <div className="row"><button className="pri" disabled={busy} onClick={save}>{busy ? 'A guardar…' : 'Registar liquidação'}</button><button onClick={close} disabled={busy}>Cancelar</button></div>
+      <div className="row"><button className="pri" disabled={busy} onClick={save}>{busy ? 'A guardar…' : 'Registar acerto'}</button><button onClick={close} disabled={busy}>Cancelar</button></div>
     </div>
   );
 }
@@ -468,6 +470,8 @@ function Month(p: Ctx & PanelProps) {
   const groups = groupByCategory(list, me); const paid = paidBy(data.expenses); const bal = useBalance(data);
   const ym = todayIso().slice(0, 7); const cc = confirmCount(data.expenses, ym);
   const pend = data.expenses.filter((e) => !e.is_deleted && e.type === 'partilhada' && !e.confirmed_by && e.paid_by !== me).length;
+  useAutoIncome(data, mutate);
+  const im = incomeMonth(data.incomes ?? [], ym);
   return (
     <>
       <BalanceCard data={data} state={p.state} />
@@ -480,6 +484,7 @@ function Month(p: Ctx & PanelProps) {
       {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={mutate as never} online={p.online} close={() => setPanel('')} />}
       <PorLancar data={data} extra={p.extra} mutate={mutate as never} online={p.online} />
       <div className="sumbar" aria-live="polite"><span className="pay-blue">Pagaste {eur(paid[me] ?? 0)}</span> · <span className="pay-pink">{otherN} pagou {eur(otherM ? paid[otherM.id] ?? 0 : 0)}</span> · <b>{!bal.debt ? 'contas certas' : bal.debt.to === me ? `${otherN} deve-te ${eur(bal.debt.cents)}` : `Deves ${eur(bal.debt.cents)} a ${otherN}`}</b></div>
+      {(im.total > 0 || im.pending > 0) && <div className="sumbar inc-bar"><span>Receitas partilhadas {eur(im.total)}</span> · <span>passa para o outro {eur(im.owed)}</span>{im.pending > 0 && <> · <span className="warn">{im.pending} por preencher</span></>}</div>}
       <div className="segc" role="radiogroup" aria-label="Quem pagou">{([['tudo', 'Tudo'], ['eu', 'Eu'], ['outro', otherN]] as const).map(([k, l]) => <button key={k} role="radio" aria-checked={who === k} className={who === k ? 'on' : ''} onClick={() => setWho(k)}>{l}</button>)}</div>
       {panel === 'despesa' && p.editing && <div ref={(el) => { if (el && el.dataset.id !== p.editing!.id) { el.dataset.id = p.editing!.id; el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }}><ExpenseForm key={p.editing.id} {...p} close={() => setPanel('')} /></div>}
       <input className="search" type="search" inputMode="search" aria-label="Procurar despesa" placeholder="Procurar (ex.: mercadona, 80)" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -495,8 +500,9 @@ function Month(p: Ctx & PanelProps) {
         </section>; })}</div> : <p className="dim">Sem despesas.</p>}
       <label className="check small dim"><input type="checkbox" checked={showGone} onChange={(e) => setShowGone(e.target.checked)} /> mostrar retiradas</label>
       {!panel && !edge && <button className="link" onClick={() => setPanel('fechar')}>fechar mês</button>}
-      <h3>liquidações</h3>
-      {panel === 'saldar' ? <SettleForm {...p} close={() => setPanel('')} /> : <button className="link" onClick={() => setPanel('saldar')}>saldar conta</button>}
+      <IncomeSection data={data} mutate={mutate} state={p.state} me={me} />
+      <h3>acertos já feitos</h3>
+      {panel === 'saldar' ? <SettleForm {...p} close={() => setPanel('')} /> : <button className="link" onClick={() => setPanel('saldar')}>+ acerto já feito</button>}
       {data.settlements.length > 0 && <ul className="list">{data.settlements.map((s) => (
         <li key={s.id} className="li">
           <div className="grow"><div>{nameOf(data.members, s.from_member)} → {nameOf(data.members, s.to_member)} <Mark s={p.state[s.id]} /></div>
