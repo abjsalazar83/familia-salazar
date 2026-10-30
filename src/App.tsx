@@ -1,5 +1,6 @@
 import { IcGear, IcPlus } from './Icons';
-const APP_V = 'fs-v24';
+import Shopping from './Shopping';
+const APP_V = 'fs-v25';
 import { matchExpense } from './lib/search';
 import { settlementEffect, payerTone, groupByCategory, paidBy } from './lib/view';
 import { confirmCount } from './lib/anomaly';
@@ -272,7 +273,7 @@ function showRow(id: string) {
   setTimeout(() => { const el = document.getElementById('e-' + id); if (!el) return; el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2200); }, 120);
 }
 
-function ExpenseForm({ data, mutate, editing, close, receipt, voice }: Ctx & { editing: Expense | null; close: () => void; receipt?: ReceiptResult | null; voice?: VoiceGuess | null }) {
+export function ExpenseForm({ data, mutate, editing, close, receipt, voice, onSaved }: Ctx & { editing: Expense | null; close: () => void; receipt?: ReceiptResult | null; voice?: VoiceGuess | null; onSaved?: (id: string) => void }) {
   const ms = data.members; const me = data.me!;
   const other = ms.find((m) => m.id !== me.id);
   const [f, setF] = useState(() => editing ? {
@@ -307,7 +308,7 @@ function ExpenseForm({ data, mutate, editing, close, receipt, voice }: Ctx & { e
       : await mutate('Despesa registada.', 'expenses', 'create', id, { id, family_id: me.family_id, ...row, is_deleted: false, created_at: new Date().toISOString() });
     setBusy(false);
     if (!ok) return setErr('Não foi guardada. Os dados ficam no formulário; tenta de novo.');
-    if (!editing) markSaved(); close(); showRow(id);
+    if (!editing) markSaved(); onSaved?.(id); close(); showRow(id);
   };
   const remove = async () => {
     if (!editing || !confirm('Retirar esta despesa do saldo? Fica no histórico como apagada.')) return;
@@ -503,42 +504,6 @@ function Month(p: Ctx & PanelProps) {
           <span className="num">{eur(s.amount_cents)}</span>
           {!s.confirmed && <button onClick={() => confirmS(s.id)}>Confirmar recebido</button>}
         </li>))}</ul>}
-    </>
-  );
-}
-
-function Shopping({ data, mutate, state }: Ctx) {
-  const blank = { id: '', name: '', qty: '', note: '' };
-  const [f, setF] = useState(blank); const [busy, setBusy] = useState(false);
-  const save = async () => {
-    if (!f.name.trim()) return;
-    const row = { name: f.name.trim(), quantity: f.qty.trim() || null, note: f.note.trim() || null };
-    setBusy(true);
-    const id = f.id || uuid();
-    const ok = f.id ? await mutate('Item atualizado.', 'shopping_items', 'patch', id, row)
-      : await mutate('Item adicionado à lista.', 'shopping_items', 'create', id, { id, ...row, family_id: data.me!.family_id, bought: false, created_at: new Date().toISOString() });
-    setBusy(false); if (ok) setF(blank);
-  };
-  const toggle = (i: Item) => mutate(i.bought ? 'Marcado como por comprar.' : 'Marcado como comprado.', 'shopping_items', 'patch', i.id, { bought: !i.bought });
-  const del = (i: Item) => mutate('Item apagado.', 'shopping_items', 'delete', i.id);
-  return (
-    <>
-      <div className="form">
-        <Field label={f.id ? 'editar item' : 'o que falta?'}><input value={f.name} maxLength={120} onKeyDown={(e) => { if (e.key === 'Enter') save(); }} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-        <details open={!!(f.qty || f.note)}><summary>Quantidade e nota</summary>
-          <Field label="Quantidade"><input value={f.qty} maxLength={40} onChange={(e) => setF({ ...f, qty: e.target.value })} /></Field>
-          <Field label="Nota"><input value={f.note} maxLength={200} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
-        </details>
-        <div className="row"><button className="pri" onClick={save} disabled={busy || !f.name.trim()}>{busy ? 'A guardar…' : f.id ? 'Guardar item' : 'Adicionar à lista'}</button>
-          {f.id && <button onClick={() => setF(blank)}>Cancelar</button>}</div>
-      </div>
-      {data.items.length ? <ul className="list">{data.items.map((i) => (
-        <li key={i.id} className="li">
-          <label className="check grow"><input type="checkbox" checked={i.bought} onChange={() => toggle(i)} />
-            <span className={i.bought ? 'gone' : ''}>{i.name}{i.quantity ? ` · ${i.quantity}` : ''}{i.note && <span className="dim small"> — {i.note}</span>}</span> <Mark s={state[i.id]} /></label>
-          <button onClick={() => setF({ id: i.id, name: i.name, qty: i.quantity ?? '', note: i.note ?? '' })}>Editar</button>
-          <button className="danger" onClick={() => { if (confirm(`Apagar «${i.name}»?`)) del(i); }}>Apagar</button>
-        </li>))}</ul> : <p className="dim">A lista está vazia.</p>}
     </>
   );
 }

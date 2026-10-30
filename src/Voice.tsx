@@ -18,7 +18,7 @@ const ERR: Record<string, string> = {
 };
 
 /** Botão de microfone. Só devolve uma sugestão: nada é gravado sem confirmares no formulário. */
-export function VoiceButton({ onResult, auto, big }: { onResult: (g: VoiceGuess) => void; auto?: boolean; big?: boolean }) {
+export function VoiceButton({ onResult, onText, auto, big, label = 'Voz' }: { onResult?: (g: VoiceGuess) => void; onText?: (t: string) => void; auto?: boolean; big?: boolean; label?: string }) {
   const [on, setOn] = useState(false); const [heard, setHeard] = useState(''); const [err, setErr] = useState('');
   const rec = useRef<SR | null>(null);
   const start = () => {
@@ -30,7 +30,7 @@ export function VoiceButton({ onResult, auto, big }: { onResult: (g: VoiceGuess)
       let final = '';
       r.onresult = (e) => { let s = ''; for (let i = 0; i < e.results.length; i++) { s += e.results[i][0].transcript; if (e.results[i].isFinal) final = s; } setHeard(s); };
       r.onerror = (e) => { if (e.error !== 'aborted') setErr(ERR[e.error] ?? 'Não consegui ouvir. Tenta outra vez ou escreve à mão.'); };
-      r.onend = () => { setOn(false); rec.current = null; if (final.trim()) onResult(parseVoice(final)); };
+      r.onend = () => { setOn(false); rec.current = null; if (final.trim()) { onText?.(final); onResult?.(parseVoice(final)); } };
       r.start(); setOn(true);
     } catch { setOn(false); setErr('Não consegui ligar o microfone. Tenta outra vez.'); }
   };
@@ -38,7 +38,7 @@ export function VoiceButton({ onResult, auto, big }: { onResult: (g: VoiceGuess)
   return (
     <>
       <button className={'act' + (on ? ' rec' : '') + (big ? ' pri' : '')} aria-pressed={on} aria-label={on ? 'A ouvir — toca para parar' : 'Despesa por voz'}
-        onClick={() => (on ? rec.current?.abort() : start())}><span className="ic"><IcMic /></span>{on ? 'A ouvir…' : 'Voz'}</button>
+        onClick={() => (on ? rec.current?.abort() : start())}><span className="ic"><IcMic /></span>{on ? 'A ouvir…' : label}</button>
       {(on || heard) && <p className="dim small act-x" aria-live="polite">{heard ? `«${heard}»` : 'Diz, por exemplo: «Mercadona 80 euros e 30, pagou a Ana»'}</p>}
       {err && <p className="err small act-x" role="alert">{err}</p>}
     </>

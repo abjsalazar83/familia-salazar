@@ -214,3 +214,43 @@ img, svg, table { max-width: 100%; }
 @keyframes fs-draw { to { stroke-dashoffset: 0; } }
 @keyframes fs-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @media (prefers-reduced-motion: reduce) { .fade, .spark .sl, .bar2 i, .donut .ds { animation: none; stroke-dashoffset: 0; } }
+
+/* ── Compras (fs-v25) ── */
+.shop-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--gap); padding: var(--pad) 0 4px; }
+.shop-est { font-size: 28px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.shop-add { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; margin: 10px 0 0; }
+.shop-add input { margin: 0; min-height: var(--btn-h); }
+.shop-add .act { width: var(--btn-h); padding: 0; }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding: 10px 0 2px; scrollbar-width: none; }
+.chip { flex: none; min-height: 32px; padding: 4px 12px; border-radius: 999px; background: var(--fill) !important; color: var(--text) !important; font-size: 14px; font-weight: 500; }
+.sec { margin: 18px 0 0; }
+.sec-h { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 4px; padding: 0 2px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--dim) !important; }
+.sec-h span { font-weight: 500; font-variant-numeric: tabular-nums; }
+.cart .sec-h { font-size: 13px !important; min-height: 32px; }
+.it { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); }
+.it:last-child { border-bottom: 0; }
+.it-bg { position: absolute; inset: 0; display: flex; justify-content: space-between; align-items: center; padding: 0 16px; font-size: 13px; font-weight: 600; color: #fff; background: linear-gradient(90deg, var(--ok) 50%, var(--bad) 50%); }
+.it-fg { position: relative; display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 6px 2px 6px 12px; background: var(--bg); transition: transform .25s var(--spring); touch-action: pan-y; }
+.it-fg::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--pa); }
+.by-n .it-fg::before { background: var(--pn); }
+.ck { flex: none; width: 26px; height: 26px; min-height: 26px; padding: 0; border-radius: 50%; background: none !important; border: 2px solid var(--dim); display: grid; place-items: center; transition: background .2s, border-color .2s; }
+.ck .icn { width: 16px; height: 16px; stroke: var(--on-acc); fill: none; stroke-width: 3; stroke-dasharray: 20; stroke-dashoffset: 20; transition: stroke-dashoffset .3s var(--ease); }
+.got .ck { background: var(--ok) !important; border-color: var(--ok); }
+.got .ck .icn { stroke-dashoffset: 0; }
+.pop .ck { animation: fs-pop .45s var(--spring); }
+@keyframes fs-pop { 40% { transform: scale(1.25); } }
+.it-main { flex: 1; min-width: 0; flex-direction: column; align-items: flex-start !important; gap: 0 !important; }
+.it-name { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.got .it-name { color: var(--dim); text-decoration: line-through; }
+.pend { opacity: .6; }
+.tag { margin-left: 6px; padding: 1px 6px; border-radius: 6px; font-size: 11px; font-style: normal; font-weight: 600; color: var(--acc); background: var(--fill); vertical-align: 2px; }
+.stp { display: flex; gap: 4px; }
+.stp button, .it .x { width: 34px; height: 34px; min-height: 34px; padding: 0; border-radius: 50%; background: var(--fill) !important; color: var(--text) !important; font-size: 18px; display: grid; place-items: center; }
+.it .x .icn { width: 16px; height: 16px; }
+.it-more { padding: 4px 2px 12px 12px; background: var(--bg); position: relative; }
+.it-more select { flex: 1; margin: 0; }
+.it-more .inline { display: flex; gap: 6px; align-items: center; font-size: 15px; }
+.wide-act { width: 100%; margin: 14px 0 0; }
+.empty { padding: 28px 0; }
+@media (prefers-reduced-motion: reduce) { .pop .ck { animation: none; } .it-fg, .ck .icn { transition: none; } }
+.it-more .inline input[type=checkbox] { width: 20px; height: 20px; min-height: 0; margin: 0; padding: 0; flex: none; accent-color: var(--acc); }

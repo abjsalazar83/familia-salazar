@@ -5,7 +5,7 @@ import { parseReceipt, type ReceiptGuess } from './lib/receipt';
 import { OCR_W, fitOcr, progressText, receiptErrorText } from './lib/ocr';
 import { supabase } from './lib/supabase';
 
-export type ReceiptResult = { guess: ReceiptGuess; photo: Blob };
+export type ReceiptResult = { guess: ReceiptGuess; photo: Blob; text?: string };
 
 /** Descodifica já reduzido (fotos de 50 MP rebentam a memória no telemóvel) e respeita a rotação EXIF. */
 async function decode(file: File): Promise<ImageBitmap | HTMLImageElement> {
@@ -58,7 +58,7 @@ function getWorker(onProg: (s: string) => void): Promise<W> {
   return workerP;
 }
 
-export function ReceiptButton({ onResult, big }: { onResult: (r: ReceiptResult) => void; big?: boolean }) {
+export function ReceiptButton({ onResult, big, label = 'Talão' }: { onResult: (r: ReceiptResult) => void; big?: boolean; label?: string }) {
   const cam = useRef<HTMLInputElement>(null); const gal = useRef<HTMLInputElement>(null);
   const [prog, setProg] = useState<string | null>(null); const [err, setErr] = useState('');
   const go = async (f: File | undefined) => {
@@ -72,7 +72,7 @@ export function ReceiptButton({ onResult, big }: { onResult: (r: ReceiptResult) 
       const { data } = await timeout(w.recognize(ocr), 90_000, 'A leitura demorou demasiado. Tenta com a foto mais perto do talão.');
       const guess = parseReceipt(data.text);
       if (!guess.total && !guess.store) setErr('Li a foto mas não encontrei loja nem total. Confirma tudo à mão (ou tira outra foto, direita e com boa luz).');
-      onResult({ guess, photo });
+      onResult({ guess, photo, text: data.text });
     } catch (e) {
       if (!(e instanceof ReceiptError)) { workerP?.then((w) => w.terminate()).catch(() => {}); workerP = null; }
       setErr(e instanceof ReceiptError ? e.message : receiptErrorText(e));
@@ -82,7 +82,7 @@ export function ReceiptButton({ onResult, big }: { onResult: (r: ReceiptResult) 
   return (<>
     <input ref={cam} type="file" accept="image/*" capture="environment" hidden onChange={(e) => go(e.target.files?.[0])} />
     <input ref={gal} type="file" accept="image/jpeg,image/png,image/webp,image/*" hidden onChange={(e) => go(e.target.files?.[0])} />
-    <button className={'act' + (big ? ' pri' : '')} disabled={!!prog} aria-label={prog ?? 'Ler talão'} onClick={() => cam.current?.click()}><span className="ic"><IcCamera /></span>{prog ? 'A ler…' : 'Talão'}</button>
+    <button className={'act' + (big ? ' pri' : '')} disabled={!!prog} aria-label={prog ?? 'Ler talão'} onClick={() => cam.current?.click()}><span className="ic"><IcCamera /></span>{prog ? 'A ler…' : label}</button>
     {prog && <div className="bar act-x" aria-hidden><i style={{ width: (Number(prog.match(/(\d+)%/)?.[1]) || 5) + '%' }} /></div>}
     {!prog && <button className="link small act-x" onClick={() => gal.current?.click()}>ou escolher foto da galeria</button>}
     {prog && <p className="dim small act-x" aria-live="polite">{prog}</p>}
