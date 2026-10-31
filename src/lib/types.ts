@@ -5,6 +5,7 @@ export type Expense = {
   paid_by: string; type: 'pessoal' | 'partilhada'; split_mode: '50/50' | 'personalizada';
   shares: Record<string, number>; date: string; is_deleted: boolean; created_at: string; receipt_path?: string | null;
   confirmed_by?: string | null; confirmed_at?: string | null; extraordinary?: boolean; reason?: string | null;
+  review?: 'por_rever' | 'descartada' | null; source?: string | null;
 };
 export type Settlement = {
   id: string; family_id: string; from_member: string; to_member: string; amount_cents: number;

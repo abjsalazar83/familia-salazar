@@ -7,7 +7,7 @@ import type { Bill, Budget, Expense, Family, HistoryMonth, Item, Member, Note, S
 import { idbGet, idbSet } from './idb';
 import { applyOps, classify, discardOp, enqueue, flush, mergeAfterFlush, retryOp, type ExecResult, type Op, type Snapshot, type Table } from './outbox';
 
-export type FamilyData = { family: Family | null; me: Member | null; members: Member[]; expenses: Expense[]; settlements: Settlement[]; items: Item[]; notes: Note[]; months: HistoryMonth[]; bills: Bill[]; budgets: Budget[]; prefs?: Pref[]; incomes: SharedIncome[]; incomeRules: IncomeRule[] };
+export type FamilyData = { family: Family | null; me: Member | null; members: Member[]; expenses: Expense[]; settlements: Settlement[]; items: Item[]; notes: Note[]; months: HistoryMonth[]; bills: Bill[]; budgets: Budget[]; prefs?: Pref[]; incomes: SharedIncome[]; incomeRules: IncomeRule[]; review?: Expense[] };
 const EMPTY: FamilyData = { family: null, me: null, members: [], expenses: [], settlements: [], items: [], notes: [], months: [], bills: [], budgets: [], incomes: [], incomeRules: [] };
 type Cache = { data: FamilyData; syncedAt: string };
 
@@ -149,7 +149,8 @@ export function useFamily(session: Session | null) {
   const { data, state } = useMemo(() => {
     const snap: Snapshot = { expenses: server.expenses, settlements: server.settlements, shopping_items: server.items, recurring_bills: server.bills ?? [], budgets: server.budgets ?? [], shared_incomes: server.incomes ?? [], income_rules: server.incomeRules ?? [] } as unknown as Snapshot;
     const r = applyOps(snap, queue);
-    return { data: { ...server, expenses: r.data.expenses as unknown as Expense[], settlements: r.data.settlements as unknown as Settlement[], items: r.data.shopping_items as unknown as Item[], months: server.months ?? [], bills: r.data.recurring_bills as unknown as Bill[], budgets: (r.data.budgets as unknown as Budget[]).filter((x) => !x.is_deleted), incomes: r.data.shared_incomes as unknown as SharedIncome[], incomeRules: (r.data.income_rules as unknown as IncomeRule[]).filter((x) => !x.is_deleted) }, state: r.state };
+    const allE = r.data.expenses as unknown as Expense[];
+    return { data: { ...server, expenses: allE.filter((x) => !x.review), review: allE.filter((x) => x.review === 'por_rever' && !x.is_deleted), settlements: r.data.settlements as unknown as Settlement[], items: r.data.shopping_items as unknown as Item[], months: server.months ?? [], bills: r.data.recurring_bills as unknown as Bill[], budgets: (r.data.budgets as unknown as Budget[]).filter((x) => !x.is_deleted), incomes: r.data.shared_incomes as unknown as SharedIncome[], incomeRules: (r.data.income_rules as unknown as IncomeRule[]).filter((x) => !x.is_deleted) }, state: r.state };
   }, [server, queue]);
 
   return { data, state, queue, status, error, syncedAt, live, syncing, refetch: sync, mutate, retry, discard };

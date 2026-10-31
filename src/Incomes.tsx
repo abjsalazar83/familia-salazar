@@ -108,3 +108,25 @@ export function IncomeSection({ data, mutate, state, me }: { data: FamilyData; m
     </>
   );
 }
+
+/** Despesas importadas do extrato: não contam no saldo até alguém as aceitar. Descartar não apaga. */
+export function ReviewSection({ data, mutate, me }: { data: FamilyData; mutate: Mutate; me: string }) {
+  const list = data.review ?? [];
+  if (!list.length) return null;
+  const tot = list.reduce((s, e) => s + e.amount_cents, 0);
+  const accept = (id: string) => mutate('Despesa aceite: já conta no saldo.', 'expenses', 'patch', id, { review: null, confirmed_by: me, confirmed_at: new Date().toISOString() });
+  const drop = (id: string) => mutate('Descartada (fica no histórico).', 'expenses', 'patch', id, { review: 'descartada' });
+  return (
+    <>
+      <h3>do extrato · por rever · {list.length}</h3>
+      <p className="dim small">Ainda não contam no saldo ({eur(tot)}). Aceita as partilhadas; descarta as que não são.</p>
+      <ul className="list">{list.map((e) => <li key={e.id} className={'li pay-' + payerTone(data.members, e.paid_by)}>
+        <div className="grow"><div>{e.description} <span className="dim small">· {e.category}</span></div>
+          <div className="dim small">{ptDate(e.date)}{e.reason ? ' · ' + e.reason : ''}</div></div>
+        <span className="num">{eur(e.amount_cents)}</span>
+        <button className="pri small" onClick={() => accept(e.id)}>aceitar</button>
+        <button className="link small" onClick={() => drop(e.id)}>descartar</button>
+      </li>)}</ul>
+    </>
+  );
+}

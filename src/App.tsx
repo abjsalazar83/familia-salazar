@@ -1,6 +1,6 @@
 import { IcGear, IcPlus } from './Icons';
 import Shopping from './Shopping';
-import { IncomeSection, useAutoIncome } from './Incomes';
+import { IncomeSection, ReviewSection, useAutoIncome } from './Incomes';
 import { incomeMonth } from './lib/income';
 const APP_V = 'fs-v26';
 import { matchExpense } from './lib/search';
@@ -500,6 +500,7 @@ function Month(p: Ctx & PanelProps) {
         </section>; })}</div> : <p className="dim">Sem despesas.</p>}
       <label className="check small dim"><input type="checkbox" checked={showGone} onChange={(e) => setShowGone(e.target.checked)} /> mostrar retiradas</label>
       {!panel && !edge && <button className="link" onClick={() => setPanel('fechar')}>fechar mês</button>}
+      <ReviewSection data={data} mutate={mutate} me={me} />
       <IncomeSection data={data} mutate={mutate} state={p.state} me={me} />
       <h3>acertos já feitos</h3>
       {panel === 'saldar' ? <SettleForm {...p} close={() => setPanel('')} /> : <button className="link" onClick={() => setPanel('saldar')}>+ acerto já feito</button>}
