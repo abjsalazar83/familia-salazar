@@ -13,7 +13,7 @@ import { ReceiptButton, type ReceiptResult } from './Receipt';
 import { IcPlus, IcX } from './Icons';
 import type { VoiceGuess } from './lib/voice';
 
-export default function Shopping(ctx: Ctx) {
+export default function Shopping(ctx: Ctx & { checkout?: boolean }) {
   const { data, mutate, state } = ctx; const me = data.me!;
   const prefs = data.prefs ?? [];
   const pm = useMemo(() => Object.fromEntries(prefs.map((p) => [p.key, p])) as Record<string, Pref>, [prefs]);
@@ -21,7 +21,7 @@ export default function Shopping(ctx: Ctx) {
   const live = data.items.filter((i) => !i.archived_at);
   const todo = live.filter((i) => !i.bought); const cart = live.filter((i) => i.bought);
   const [q, setQ] = useState(''); const [open, setOpen] = useState<string | null>(null);
-  const [showCart, setShowCart] = useState(false); const [done, setDone] = useState<'' | 'total' | 'form'>('');
+  const [showCart, setShowCart] = useState(false); const [done, setDone] = useState<'' | 'total' | 'form'>(ctx.checkout ? 'total' : '');
   const [total, setTotal] = useState(''); const [rc, setRc] = useState<ReceiptResult | null>(null);
   const [pop, setPop] = useState<string | null>(null);
   const inList = useMemo(() => new Set(live.map((i) => keyOf(i.name))), [live]);
@@ -77,7 +77,7 @@ export default function Shopping(ctx: Ctx) {
 
       <form className="shop-add" onSubmit={(e) => { e.preventDefault(); add(q); }}>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Adicionar… (ex.: leite, ovos e pão)" aria-label="Adicionar à lista" maxLength={200} />
-        {voiceSupported() && <VoiceButton label="" onText={(t) => add(t)} />}
+        {voiceSupported() && <VoiceButton label="" aria="Adicionar à lista por voz" hint="Diz, por exemplo: «leite, 2 pães e ovos»" onText={(t) => add(t)} />}
         <button className="act pri" type="submit" aria-label="Adicionar" disabled={!q.trim()}><IcPlus /></button>
       </form>
       {sugg.length > 0 && <div className="chips fade">{sugg.map((p) => <button key={p.key} className="chip" onClick={() => add(p.name)}>{p.name}</button>)}</div>}

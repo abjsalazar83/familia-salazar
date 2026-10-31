@@ -1,4 +1,4 @@
-import { IcCheck, IcGear, IcPlus, IcSwap } from './Icons';
+import { IcCheck, IcGear, IcList, IcPen, IcPlus, IcSwap } from './Icons';
 import Shopping from './Shopping';
 import { IncomeSection, useAutoIncome } from './Incomes';
 import { incomeMonth } from './lib/income';
@@ -169,7 +169,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
     el.addEventListener('touchstart', start, { passive: true }); el.addEventListener('touchend', end, { passive: true });
     return () => { el.removeEventListener('touchstart', start); el.removeEventListener('touchend', end); };
   }, []);
-  const [panel, setPanel] = useState<'' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz'>('');
+  const [panel, setPanel] = useState<'' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz' | 'mais'>(''); const [checkout, setCheckout] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [toast, setToast] = useState<Toast>(null);
   const [locked, unlocked] = useLock();
@@ -231,15 +231,15 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
           <button onClick={() => retry(o.opId)} disabled={!online}>Tentar de novo</button>
           <button className="danger" onClick={() => { if (confirm('Descartar esta alteração local? Não foi guardada no servidor.')) discard(o.opId); }}>Descartar</button></li>)}</ul></div>}
       <main ref={mainRef} key={tab} className={'screen ' + swipeDir}>
-        {tab === 'mes' && <Month {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} />}
-        {tab === 'compras' && <Shopping {...ctx} />}
+        {tab === 'mes' && <Month {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} goList={() => { setCheckout(true); setSwipeDir(''); setTab('compras'); setPanel(''); }} />}
+        {tab === 'compras' && <Shopping {...ctx} checkout={checkout} />}
         {tab === 'fixas' && <Bills {...ctx} />}
         <Suspense fallback={<p className="dim">A carregar…</p>}>{tab === 'resumo' && <History data={data} refetch={refetch} online={online} extra={extra} />}
         {tab === 'defs' && <><Settings {...ctx} theme={theme} setTheme={setTheme} /><p className="small dim" style={{ textAlign: 'center' }}>versão {APP_V}</p></>}</Suspense>
       </main>
       <nav className="tabs" aria-label="Navegação">
         {([['mes', 'mês'], ['compras', 'compras'], ['fixas', 'fixas'], ['resumo', 'resumo']] as [Tab, string][]).map(([k, l]) => (
-          <button key={k} aria-current={tab === k ? 'page' : undefined} className={tab === k ? 'pri' : ''} onClick={() => { setSwipeDir(''); setTab(k); setPanel(''); }}>{l}</button>))}
+          <button key={k} aria-current={tab === k ? 'page' : undefined} className={tab === k ? 'pri' : ''} onClick={() => { setSwipeDir(''); setTab(k); setPanel(''); setCheckout(false); }}>{l}</button>))}
       </nav>
     </>
   );
@@ -252,7 +252,7 @@ const describeOp = (o: Op) => `${OPN[o.table]}: ${o.kind === 'create' ? 'novo' :
 export function Mark({ s }: { s?: 'pending' | 'failed' }) {
   return s ? <span className={'tag ' + (s === 'failed' ? 'err' : 'warn')}>{s === 'failed' ? 'Falhou' : 'Por sincronizar'}</span> : null;
 }
-type PanelProps = { panel: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz'; setPanel: (p: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz') => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
+type PanelProps = { panel: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz' | 'mais'; setPanel: (p: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz' | 'mais') => void; goList: () => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
 
 function useBalance(d: FamilyData) {
   return useMemo(() => calculateHouseholdBalance(d.members.map((m) => m.id), d.expenses, d.settlements, d.incomes ?? []), [d]);
@@ -482,10 +482,10 @@ function Month(p: Ctx & PanelProps) {
       <Inbox data={data} payments={paymentsOf(data, p.extra)} mutate={mutate} />
       {panel === 'saldar' && <SettleForm {...p} close={() => setPanel('')} />}
       {panel === 'despesa' && !p.editing ? <ExpenseForm key={rc ? 'rc' : vc ? 'v' + vc.text : 'n'} {...p} receipt={rc} voice={vc} close={() => { setRc(null); setVc(null); setPanel(''); }} />
-        : (!panel || panel === 'talao' || panel === 'voz') && <div className="acts">
-          <button className="act pri" onClick={() => { setRc(null); setVc(null); p.openExpense(null); }}><span className="ic"><IcPlus /></span>Despesa</button>
-          <ReceiptButton big={panel === 'talao'} onResult={(r) => { setRc(r); setVc(null); p.openExpense(null); }} />
-          <VoiceButton key={panel} auto={panel === 'voz'} big={panel === 'voz'} onResult={(g) => { setRc(null); setVc(g); p.openExpense(null); }} /></div>}
+        : !panel ? <button className="act pri wide-act add-btn" onClick={() => setPanel('mais')}><span className="ic"><IcPlus /></span>Adicionar</button>
+        : (panel === 'mais' || panel === 'talao' || panel === 'voz') && <AddSheet panel={panel} close={() => setPanel('')}
+            write={() => { setRc(null); setVc(null); p.openExpense(null); }} receipt={(r) => { setRc(r); setVc(null); p.openExpense(null); }}
+            voice={(g) => { setRc(null); setVc(g); p.openExpense(null); }} fromList={data.items.some((i) => i.bought && !i.archived_at) ? p.goList : undefined} />}
       {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={mutate as never} online={p.online} close={() => setPanel('')} />}
       <div className="sumbar" aria-live="polite"><span className="pay-blue">Pagaste {eur(paid[me] ?? 0)}</span> · <span className="pay-pink">{otherN} pagou {eur(otherM ? paid[otherM.id] ?? 0 : 0)}</span> · <b>{!bal.debt ? 'contas certas' : bal.debt.to === me ? `${otherN} deve-te ${eur(bal.debt.cents)}` : `Deves ${eur(bal.debt.cents)} a ${otherN}`}</b></div>
       {(im.total > 0 || im.pending > 0) && <div className="sumbar inc-bar"><span>Receitas partilhadas {eur(im.total)}</span> · <span>passa para o outro {eur(im.owed)}</span>{im.pending > 0 && <> · <span className="warn">{im.pending} por preencher</span></>}</div>}
@@ -512,6 +512,22 @@ function Month(p: Ctx & PanelProps) {
           {!s.confirmed && s.to_member === me && <button onClick={() => confirmS(s.id)}>Confirmar recebido</button>}
         </li>))}</ul></details>}
     </>
+  );
+}
+
+/** Folha «+» única: Escrever, Voz, Talão, Da lista. Nada é gravado sem confirmares no formulário. */
+function AddSheet({ panel, close, write, receipt, voice, fromList }: { panel: string; close: () => void; write: () => void; receipt: (r: ReceiptResult) => void; voice: (g: VoiceGuess) => void; fromList?: () => void }) {
+  return (
+    <div className="card sheet add-sheet" role="dialog" aria-label="Adicionar despesa">
+      <div className="row between"><h2>Adicionar</h2><button className="link" onClick={close}>cancelar</button></div>
+      <div className="acts two">
+        <button className="act" onClick={write}><span className="ic"><IcPen /></span>Escrever</button>
+        <VoiceButton key={panel} auto={panel === 'voz'} big={panel === 'voz'} aria="Despesa por voz" onResult={voice} />
+        <ReceiptButton big={panel === 'talao'} onResult={receipt} />
+        <button className="act" disabled={!fromList} onClick={fromList} title={fromList ? '' : 'sem nada no carrinho'}><span className="ic"><IcList /></span>Da lista</button>
+      </div>
+      {!fromList && <p className="dim small">«Da lista» fica ativo quando houver artigos no carrinho das compras.</p>}
+    </div>
   );
 }
 

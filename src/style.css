@@ -262,3 +262,8 @@ img, svg, table { max-width: 100%; }
 .li.inc .plain { background: none; border: 0; padding: 0; text-align: left; color: inherit; font: inherit; min-height: 0; }
 .seg .tone-pink.pri { background: var(--pn); border-color: var(--pn); } .seg .tone-blue.pri { background: var(--pa); border-color: var(--pa); }
 .sumbar.inc-bar { position: static; opacity: .9; font-size: .92em; box-shadow: none; }
+.acts.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.add-btn { margin: var(--gap) 0; }
+.inbox .plain { background: none; border: 0; padding: 0; min-height: 0; color: inherit; }
+.inbox .ic { display: inline-flex; margin-right: 8px; }
+.inbox .li .amt { width: 6.5em; }

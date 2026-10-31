@@ -11,19 +11,20 @@ export const voiceSupported = () => typeof window !== 'undefined' && !!Ctor();
 
 const ERR: Record<string, string> = {
   'not-allowed': 'O microfone está bloqueado. Ativa-o em Chrome → cadeado → Definições do site → Microfone, e tenta outra vez.',
-  'service-not-allowed': 'O reconhecimento de voz não está disponível neste telemóvel. Escreve a despesa à mão.',
+  'service-not-allowed': 'O reconhecimento de voz não está disponível neste telemóvel. Escreve à mão.',
   'no-speech': 'Não ouvi nada. Toca no microfone e diz, por exemplo, «Mercadona 80 euros e 30».',
   'audio-capture': 'Não encontrei microfone.',
   network: 'O reconhecimento de voz precisa de internet neste telemóvel. Escreve à mão ou tenta com rede.',
 };
 
 /** Botão de microfone. Só devolve uma sugestão: nada é gravado sem confirmares no formulário. */
-export function VoiceButton({ onResult, onText, auto, big, label = 'Voz' }: { onResult?: (g: VoiceGuess) => void; onText?: (t: string) => void; auto?: boolean; big?: boolean; label?: string }) {
+/** Um só componente de voz para toda a app: despesas (onResult) e lista de compras (onText). */
+export function VoiceButton({ onResult, onText, auto, big, label = 'Voz', aria = 'Ditar por voz', hint = 'Diz, por exemplo: «Mercadona 80 euros e 30, pagou a Ana»' }: { onResult?: (g: VoiceGuess) => void; onText?: (t: string) => void; auto?: boolean; big?: boolean; label?: string; aria?: string; hint?: string }) {
   const [on, setOn] = useState(false); const [heard, setHeard] = useState(''); const [err, setErr] = useState('');
   const rec = useRef<SR | null>(null);
   const start = () => {
     const C = Ctor(); setErr(''); setHeard('');
-    if (!C) { setErr('Este browser não suporta despesa por voz. Usa o Chrome no Android, ou escreve à mão.'); return; }
+    if (!C) { setErr('Este browser não suporta reconhecimento de voz. Usa o Chrome no Android, ou escreve à mão.'); return; }
     try {
       const r = new C(); rec.current = r;
       r.lang = 'pt-PT'; r.interimResults = true; r.maxAlternatives = 1; r.continuous = false;
@@ -37,9 +38,9 @@ export function VoiceButton({ onResult, onText, auto, big, label = 'Voz' }: { on
   useEffect(() => { if (auto) start(); return () => rec.current?.abort(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
-      <button className={'act' + (on ? ' rec' : '') + (big ? ' pri' : '')} aria-pressed={on} aria-label={on ? 'A ouvir — toca para parar' : 'Despesa por voz'}
+      <button className={'act' + (on ? ' rec' : '') + (big ? ' pri' : '')} aria-pressed={on} aria-label={on ? 'A ouvir — toca para parar' : aria}
         onClick={() => (on ? rec.current?.abort() : start())}><span className="ic"><IcMic /></span>{on ? 'A ouvir…' : label}</button>
-      {(on || heard) && <p className="dim small act-x" aria-live="polite">{heard ? `«${heard}»` : 'Diz, por exemplo: «Mercadona 80 euros e 30, pagou a Ana»'}</p>}
+      {(on || heard) && <p className="dim small act-x" aria-live="polite">{heard ? `«${heard}»` : hint}</p>}
       {err && <p className="err small act-x" role="alert">{err}</p>}
     </>
   );
