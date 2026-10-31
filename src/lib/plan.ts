@@ -14,7 +14,7 @@ export type MonthClose = {
 };
 export type Settings = { family_id: string; savings_goal_cents: number; notify_days: number };
 
-export const MBWAY_MAX = 75000;
+export { MBWAY_MAX } from './settle';
 const STEP: Record<Period, number> = { mensal: 1, bimestral: 2, trimestral: 3, anual: 12 };
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const parse = (s: string) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
@@ -47,31 +47,9 @@ export function upcoming(ps: Payment[], today: string, soonDays = 7): Upcoming[]
 /** Custo mensal equivalente (ao preço em vigor hoje). */
 export const monthlyEq = (p: Payment, today: string) => { const t = termsAt(p, today); return t.amount == null ? null : Math.round(t.amount / STEP[t.period]); };
 
-/** Lista (já a metade) de cada pessoa: o que pagou por conta dos outros nas despesas partilhadas do mês. */
-export function halvedLists(members: string[], exps: { paid_by: string; amount_cents: number; shares: Record<string, number> | null; date: string; is_deleted: boolean; type?: string }[], ym: string, incomes: { amount_cents: number | null; received_by: string; receiver_pct: number; is_deleted: boolean; date: string }[] = []) {
-  const out: Record<string, number> = Object.fromEntries(members.map((m) => [m, 0]));
-  // Receita partilhada: a parte do outro entra na lista de quem tem a receber (o não-recebedor).
-  for (const i of incomes) {
-    if (!i || i.is_deleted || i.amount_cents == null || !i.date?.startsWith(ym) || members.length !== 2 || !(i.received_by in out)) continue;
-    const other = members.find((m) => m !== i.received_by)!;
-    out[other] += i.amount_cents - Math.round((i.amount_cents * (i.receiver_pct ?? 50)) / 100);
-  }
-  for (const e of exps) {
-    if (!e || e.is_deleted || e.type === 'pessoal' || typeof e.date !== 'string' || !e.date.startsWith(ym) || !(e.paid_by in out)) continue;
-    const own = e.shares?.[e.paid_by] ?? Math.round(e.amount_cents / 2);
-    out[e.paid_by] += (Number(e.amount_cents) || 0) - own;
-  }
-  return out;
-}
-export type CloseCalc = { creditor: string | null; debtor: string | null; diff: number; paid: number; carry: number };
-/** Acerto = diferença das listas; MB WAY máx. 750 € por transferência; o resto passa como «mês X» na lista do credor. */
-export function closeCalc(lists: Record<string, number>): CloseCalc {
-  const ids = Object.keys(lists); if (ids.length < 2) return { creditor: null, debtor: null, diff: 0, paid: 0, carry: 0 };
-  const [a, b] = ids; const d = lists[a] - lists[b];
-  if (d === 0) return { creditor: null, debtor: null, diff: 0, paid: 0, carry: 0 };
-  const diff = Math.abs(d); const paid = Math.min(diff, MBWAY_MAX);
-  return { creditor: d > 0 ? a : b, debtor: d > 0 ? b : a, diff, paid, carry: diff - paid };
-}
+/** Listas do mês e acerto: delegados no motor único (lib/settle.ts). */
+export { monthLists as halvedLists, closeOf as closeCalc, type CloseCalc } from './settle';
+import type { CloseCalc } from './settle';
 export const prevYm = (ym: string) => addMonths(ym + '-01', -1).slice(0, 7);
 export const nextYm = (ym: string) => addMonths(ym + '-01', 1).slice(0, 7);
 const MES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
