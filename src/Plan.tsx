@@ -184,16 +184,18 @@ export function Upcoming({ data, extra, online }: { data: FamilyData; extra: Ext
 }
 const termsAt2 = (u: ReturnType<typeof upcoming>[number]) => (u.p.new_from && u.date && u.date >= u.p.new_from ? u.p.new_period ?? u.p.period : u.p.period);
 
-type MutateFn = (label: string, table: 'settlements', kind: 'create', id: string, row: Record<string, unknown>) => Promise<boolean>;
+type MutateFn = (label: string, table: 'settlements' | 'month_closes', kind: 'create', id: string, row: Record<string, unknown>) => Promise<boolean>;
 /** Fecho de mês num toque: listas a metade → diferença → MB WAY máx. 750 € → resto para o mês seguinte. Não envia nada. */
 export function CloseMonth({ data, extra, mutate, online, close }: { data: FamilyData; extra: Extra; mutate: MutateFn; online: boolean; close: () => void }) {
   const ids = data.members.map((m) => m.id);
   const names = Object.fromEntries(data.members.map((m) => [m.id, m.display_name]));
-  const closed = new Set(extra.closes.map((c) => c.ym));
+  const allCloses = [...(data.closes ?? []), ...extra.closes.filter((c) => !(data.closes ?? []).some((d) => d.id === c.id))].filter((c) => !c.is_deleted);
+  const closed = new Set(allCloses.map((c) => c.ym));
+  const me = data.me!.id;
   const cur = todayIso().slice(0, 7);
   const [ym, setYm] = useState(() => (closed.has(prevYm(cur)) ? cur : prevYm(cur)));
   const base = useMemo(() => halvedLists(ids, data.expenses, ym, data.incomes ?? []), [ids.join(), data.expenses, data.incomes, ym]);
-  const carryIn = extra.closes.find((c) => c.ym === prevYm(ym) && c.carry_cents > 0);
+  const carryIn = allCloses.find((c) => c.ym === prevYm(ym) && c.carry_cents > 0);
   const [over, setOver] = useState<Record<string, string>>({});
   const [step, setStep] = useState<'rever' | 'pagar'>('rever'); const [err, setErr] = useState(''); const [copied, setCopied] = useState(false);
   useEffect(() => { setOver({}); setStep('rever'); }, [ym]);
@@ -205,26 +207,28 @@ export function CloseMonth({ data, extra, mutate, online, close }: { data: Famil
     try { if (navigator.share) { await navigator.share({ text }); return; } } catch { /* cancelado */ }
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { setErr('Não consegui copiar; seleciona o texto.'); }
   };
+  /** Fecha o mês pela fila local (funciona sem rede). Quem paga regista «já paguei» (fica por confirmar); quem recebe confirma. */
   const paid = async () => {
     const cc = confirmCount(data.expenses, ym);
     if (cc.done < cc.total && !confirm(`Há ${cc.total - cc.done} de ${cc.total} despesas de ${mesNome(ym)} por confirmar. Fechar mesmo assim?`)) return;
-    if (!confirm(`Confirmas que ${names[c.debtor ?? ''] ?? ''} já pagou ${eur(c.paid)} e queres fechar ${mesNome(ym)}?`)) return;
-    setErr(''); const fid = data.me!.family_id; let sid: string | null = null;
+    const receiver = c.creditor === me;
+    if (!confirm(c.debtor ? (receiver ? `Confirmas que recebeste ${eur(c.paid)} de ${names[c.debtor]} e queres fechar ${mesNome(ym)}?` : `Confirmas que já enviaste ${eur(c.paid)} a ${names[c.creditor!]}? Fica por confirmar até ${names[c.creditor!]} confirmar.`) : `Fechar ${mesNome(ym)} com contas certas?`)) return;
+    setErr(''); const fid = data.me!.family_id; let sid: string | null = null; const now = new Date().toISOString();
     if (c.debtor && c.paid > 0) {
       sid = uuid();
-      const ok = await mutate(`Acerto de ${mesNome(ym)} registado.`, 'settlements', 'create', sid, { id: sid, family_id: fid, from_member: c.debtor, to_member: c.creditor, amount_cents: c.paid, date: todayIso(), method: 'MB WAY', confirmed: true, confirmed_at: new Date().toISOString(), is_deleted: false, created_at: new Date().toISOString() });
+      const ok = await mutate(`Acerto de ${mesNome(ym)} registado${receiver ? '' : ' (por confirmar)'}.`, 'settlements', 'create', sid, { id: sid, family_id: fid, from_member: c.debtor, to_member: c.creditor, amount_cents: c.paid, date: todayIso(), method: 'MB WAY', confirmed: receiver, confirmed_at: receiver ? now : null, is_deleted: false, created_at: now });
       if (!ok) return;
     }
-    const { error } = await supabase.from('month_closes').insert({ id: uuid(), family_id: fid, ym, creditor: c.creditor, debtor: c.debtor, diff_cents: c.diff, paid_cents: c.paid, carry_cents: c.carry, settlement_id: sid,
+    const cid = uuid();
+    const ok = await mutate(`${mesNome(ym)} fechado.`, 'month_closes', 'create', cid, { id: cid, family_id: fid, ym, creditor: c.creditor, debtor: c.debtor, diff_cents: c.diff, paid_cents: c.paid, carry_cents: c.carry, settlement_id: sid, is_deleted: false, closed_at: now, created_at: now,
       lists: { ...Object.fromEntries(Object.entries(lists).map(([k, v]) => [names[k], v])), ...(carryIn ? { [`mês ${mesNome(prevYm(ym))}`]: carryIn.carry_cents } : {}) } });
-    if (error) return setErr('O pagamento ficou registado, mas o fecho não: ' + error.message);
-    await supabase.rpc('set_month_open', { p_ym: ym, p_open: false }).then(() => {}, () => {});
-    await extra.reload(); close();
+    if (!ok) return setErr('O acerto ficou registado, mas o fecho não: tenta outra vez.');
+    close();
   };
   if (extra.missing) return <div className="form"><p className="dim">Falta correr migration_v6.sql no Supabase para fechar meses.</p><button onClick={close}>fechar</button></div>;
   return (
     <section className="form sheet">
-      <div className="row between"><h2>Fechar mês</h2><button className="link" onClick={close}>cancelar</button></div>
+      <div className="row between"><h2>Saldar mês</h2><button className="link" onClick={close}>cancelar</button></div>
       <div className="seg">{[prevYm(prevYm(cur)), prevYm(cur), cur].map((m) => <button key={m} className={ym === m ? 'pri' : ''} onClick={() => setYm(m)}>{mesNome(m)}{closed.has(m) ? ' ✓' : ''}</button>)}</div>
       {already && <p className="ok small">{mesNome(ym)} já está fechado.</p>}
       {(() => { const cc = confirmCount(data.expenses, ym); return cc.done < cc.total ? <p className="warn small">⚠ {cc.total - cc.done} de {cc.total} despesas por confirmar neste mês.</p> : null; })()}
@@ -238,7 +242,7 @@ export function CloseMonth({ data, extra, mutate, online, close }: { data: Famil
       <p className="msg small">{text}</p>
       <div className="row"><button onClick={share}>{copied ? 'copiado ✓' : 'copiar / partilhar com a Ana'}</button></div>
       {step === 'rever' ? <button className="pri wide" disabled={already} onClick={() => setStep('pagar')}>continuar</button>
-        : <button className="pri wide" disabled={!online || already} onClick={paid}>já paguei · fechar {mesNome(ym)}</button>}
+        : <button className="pri wide" disabled={already} onClick={paid}>{!c.debtor ? `fechar ${mesNome(ym)}` : c.creditor === me ? `recebi · fechar ${mesNome(ym)}` : `já paguei · fechar ${mesNome(ym)}`}</button>}
       {err && <p className="err small">{err}</p>}
       <p className="dim small">A app não envia nada: tu fazes o MB WAY e partilhas a mensagem.</p>
     </section>

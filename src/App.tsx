@@ -1,4 +1,4 @@
-import { IcGear, IcPlus } from './Icons';
+import { IcCheck, IcGear, IcPlus, IcSwap } from './Icons';
 import Shopping from './Shopping';
 import { IncomeSection, ReviewSection, useAutoIncome } from './Incomes';
 import { incomeMonth } from './lib/income';
@@ -246,7 +246,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
 
 type Mutate = (label: string, table: Table, kind: Op['kind'], id: string, row?: Record<string, unknown>) => Promise<boolean>;
 export type Ctx = { data: FamilyData; run: (l: string, f: () => PromiseLike<{ error: unknown }>) => Promise<boolean>; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; online: boolean; setToast: (t: Toast) => void; extra: Extra };
-const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras', recurring_bills: 'Conta', budgets: 'Limite', shared_incomes: 'Receita', income_rules: 'Receita fixa' };
+const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras', recurring_bills: 'Conta', budgets: 'Limite', shared_incomes: 'Receita', income_rules: 'Receita fixa', month_closes: 'Fecho de mês' };
 const describeOp = (o: Op) => `${OPN[o.table]}: ${o.kind === 'create' ? 'novo' : o.kind === 'delete' ? 'apagar' : 'alterar'}${o.row.description ? ' «' + o.row.description + '»' : o.row.name ? ' «' + o.row.name + '»' : ''}`;
 export function Mark({ s }: { s?: 'pending' | 'failed' }) {
   return s ? <span className={'tag ' + (s === 'failed' ? 'err' : 'warn')}>{s === 'failed' ? 'Falhou' : 'Por sincronizar'}</span> : null;
@@ -258,14 +258,19 @@ function useBalance(d: FamilyData) {
   return useMemo(() => calculateHouseholdBalance(d.members.map((m) => m.id), d.expenses, d.settlements, d.incomes ?? []), [d]);
 }
 
-function BalanceCard({ data, state }: { data: FamilyData; state: Ctx['state'] }) {
-  const b = useBalance(data);
+function BalanceCard({ data, state, panel, setPanel }: { data: FamilyData; state: Ctx['state']; panel: PanelProps['panel']; setPanel: PanelProps['setPanel'] }) {
+  const b = useBalance(data); const me = data.me?.id;
+  const tone = b.debt ? payerTone(data.members, b.debt.to) : '';
+  const pendS = data.settlements.filter((s) => !s.is_deleted && !s.confirmed).length;
   return (
-    <div className="card balance" aria-live="polite">
+    <div className={'card balance' + (tone ? ' pay-' + tone : '')} aria-live="polite">
       <div><Money c={b.debt?.cents ?? 0} className="big" /></div>
-      <div className="dim">{b.debt ? `${nameOf(data.members, b.debt.from)} → ${nameOf(data.members, b.debt.to)}` : 'contas certas'}</div>
+      <div className="dim">{b.debt ? (b.debt.to === me ? `${nameOf(data.members, b.debt.from)} deve-te` : `deves a ${nameOf(data.members, b.debt.to)}`) : 'contas certas'}</div>
       {[...data.expenses, ...data.settlements, ...(data.incomes ?? [])].some((r) => state[r.id]) && <div className="warn small">inclui alterações por sincronizar</div>}
+      {pendS > 0 && <div className="warn small">{pendS} acerto{pendS > 1 ? 's' : ''} por confirmar (não conta{pendS > 1 ? 'm' : ''})</div>}
       {data.members.length < 2 && <div className="warn small">falta a segunda pessoa · código nas definições</div>}
+      {!panel && <div className="acts two"><button className="act pri" onClick={() => setPanel('fechar')}><span className="ic"><IcCheck /></span>Saldar mês</button>
+        <button className="act" onClick={() => setPanel('saldar')}><span className="ic"><IcSwap /></span>Acerto avulso</button></div>}
     </div>
   );
 }
@@ -461,10 +466,9 @@ function Month(p: Ctx & PanelProps) {
   const [rc, setRc] = useState<ReceiptResult | null>(null); const [vc, setVc] = useState<VoiceGuess | null>(null);
   const [showGone, setShowGone] = useState(false); const [who, setWho] = useState<'tudo' | 'eu' | 'outro'>('tudo');
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const day = new Date().getDate(); const edge = day <= 7 || day >= 25;
-  const [q, setQ] = useState('');
+    const [q, setQ] = useState('');
   const list = data.expenses.filter((e) => (showGone || !e.is_deleted) && (who === 'tudo' || (who === 'eu' ? e.paid_by === me : e.paid_by !== me)) && matchExpense(e, q));
-  const confirmS = (id: string) => mutate('Liquidação confirmada.', 'settlements', 'patch', id, { confirmed: true });
+  const confirmS = (id: string) => mutate('Liquidação confirmada.', 'settlements', 'patch', id, { confirmed: true, confirmed_at: new Date().toISOString() });
   const confirmE = (e: Expense) => mutate(e.confirmed_by ? 'Confirmação retirada.' : 'Valor confirmado.', 'expenses', 'patch', e.id, e.confirmed_by ? { confirmed_by: null, confirmed_at: null } : { confirmed_by: me, confirmed_at: new Date().toISOString() });
   const otherM = data.members.find((m) => m.id !== me); const otherN = otherM?.display_name ?? 'Outro';
   const groups = groupByCategory(list, me); const paid = paidBy(data.expenses); const bal = useBalance(data);
@@ -474,8 +478,8 @@ function Month(p: Ctx & PanelProps) {
   const im = incomeMonth(data.incomes ?? [], ym);
   return (
     <>
-      <BalanceCard data={data} state={p.state} />
-      {!panel && edge && <button className="wide" onClick={() => setPanel('fechar')}>fechar mês</button>}
+      <BalanceCard data={data} state={p.state} panel={panel} setPanel={setPanel} />
+      {panel === 'saldar' && <SettleForm {...p} close={() => setPanel('')} />}
       {panel === 'despesa' && !p.editing ? <ExpenseForm key={rc ? 'rc' : vc ? 'v' + vc.text : 'n'} {...p} receipt={rc} voice={vc} close={() => { setRc(null); setVc(null); setPanel(''); }} />
         : (!panel || panel === 'talao' || panel === 'voz') && <div className="acts">
           <button className="act pri" onClick={() => { setRc(null); setVc(null); p.openExpense(null); }}><span className="ic"><IcPlus /></span>Despesa</button>
@@ -499,18 +503,15 @@ function Month(p: Ctx & PanelProps) {
           <div className="grp-b"><div><ul className="list">{g.items.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} me={me} onConfirm={confirmE} onEdit={() => p.openExpense(e)} />)}</ul></div></div>
         </section>; })}</div> : <p className="dim">Sem despesas.</p>}
       <label className="check small dim"><input type="checkbox" checked={showGone} onChange={(e) => setShowGone(e.target.checked)} /> mostrar retiradas</label>
-      {!panel && !edge && <button className="link" onClick={() => setPanel('fechar')}>fechar mês</button>}
       <ReviewSection data={data} mutate={mutate} me={me} />
       <IncomeSection data={data} mutate={mutate} state={p.state} me={me} />
-      <h3>acertos já feitos</h3>
-      {panel === 'saldar' ? <SettleForm {...p} close={() => setPanel('')} /> : <button className="link" onClick={() => setPanel('saldar')}>+ acerto já feito</button>}
-      {data.settlements.length > 0 && <ul className="list">{data.settlements.map((s) => (
-        <li key={s.id} className="li">
+      {data.settlements.length > 0 && <details className="grp-d"><summary><h3 style={{ display: 'inline' }}>histórico de acertos · {data.settlements.length}</h3></summary><ul className="list">{data.settlements.map((s) => (
+        <li key={s.id} className={'li pay-' + payerTone(data.members, s.from_member)}>
           <div className="grow"><div>{nameOf(data.members, s.from_member)} → {nameOf(data.members, s.to_member)} <Mark s={p.state[s.id]} /></div>
             <div className="dim small">{ptDate(s.date)}{s.method ? ` · ${s.method}` : ''} · <span className={s.confirmed ? 'okt' : 'warn'}>{s.confirmed ? `confirmada${s.confirmed_at ? ' ' + ptDate(s.confirmed_at) : ''}` : 'por confirmar (não conta)'}</span></div></div>
           <span className="num">{eur(s.amount_cents)}</span>
-          {!s.confirmed && <button onClick={() => confirmS(s.id)}>Confirmar recebido</button>}
-        </li>))}</ul>}
+          {!s.confirmed && s.to_member === me && <button onClick={() => confirmS(s.id)}>Confirmar recebido</button>}
+        </li>))}</ul></details>}
     </>
   );
 }
