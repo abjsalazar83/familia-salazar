@@ -6,7 +6,7 @@ import type { FamilyData } from './lib/useFamily';
 import { eur, parseCents, centsToInput, todayIso, ptDate } from './lib/money';
 import { CATS } from './lib/types';
 import { hasV7, monthlyTotals, porLancar, postExpense, closeCalc, closeMessage, halvedLists, mesNome, monthlyEq, nextYm, prevYm, savings, upcoming, type Income, type MonthClose, type Payment, type Period, type Settings } from './lib/plan';
-import { uuid } from './lib/outbox';
+import { uuid, type Mutate } from './lib/outbox';
 
 export type Extra = { payments: Payment[]; incomes: Income[]; closes: MonthClose[]; settings: Settings | null; missing: boolean; reload: () => Promise<void> };
 const reduced = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -117,10 +117,9 @@ async function notifyDue(items: ReturnType<typeof upcoming>, days: number) {
 }
 
 /** Próximos pagamentos e subscrições. */
-export type PayMutate = (label: string, table: 'payments', kind: 'create' | 'patch', id: string, row: Record<string, unknown>) => Promise<boolean>;
 /** Pagamentos: os sincronizados (com a fila local por cima) quando existem; senão os do carregamento antigo. */
 export const paymentsOf = (data: FamilyData, extra: Extra) => data.payments ?? extra.payments;
-export function Upcoming({ data, extra, mutate }: { data: FamilyData; extra: Extra; mutate: PayMutate }) {
+export function Upcoming({ data, extra, mutate }: { data: FamilyData; extra: Extra; mutate: Mutate }) {
   const pays = paymentsOf(data, extra); const v7 = hasV7(pays); const names = Object.fromEntries(data.members.map((m) => [m.id, m.display_name]));
   const today = todayIso();
   const list = useMemo(() => upcoming(pays, today), [pays, today]);
@@ -188,9 +187,8 @@ export function Upcoming({ data, extra, mutate }: { data: FamilyData; extra: Ext
 }
 const termsAt2 = (u: ReturnType<typeof upcoming>[number]) => (u.p.new_from && u.date && u.date >= u.p.new_from ? u.p.new_period ?? u.p.period : u.p.period);
 
-type MutateFn = (label: string, table: 'settlements' | 'month_closes', kind: 'create', id: string, row: Record<string, unknown>) => Promise<boolean>;
 /** Fecho de mês num toque: listas a metade → diferença → MB WAY máx. 750 € → resto para o mês seguinte. Não envia nada. */
-export function CloseMonth({ data, extra, mutate, online, close }: { data: FamilyData; extra: Extra; mutate: MutateFn; online: boolean; close: () => void }) {
+export function CloseMonth({ data, extra, mutate, online, close }: { data: FamilyData; extra: Extra; mutate: Mutate; online: boolean; close: () => void }) {
   const ids = data.members.map((m) => m.id);
   const names = Object.fromEntries(data.members.map((m) => [m.id, m.display_name]));
   const allCloses = [...(data.closes ?? []), ...extra.closes.filter((c) => !(data.closes ?? []).some((d) => d.id === c.id))].filter((c) => !c.is_deleted);

@@ -267,3 +267,4 @@ img, svg, table { max-width: 100%; }
 .inbox .plain { background: none; border: 0; padding: 0; min-height: 0; color: inherit; }
 .inbox .ic { display: inline-flex; margin-right: 8px; }
 .inbox .li .amt { width: 6.5em; }
+.grp{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;opacity:.7;margin:1.4rem 0 .2rem;font-weight:600}

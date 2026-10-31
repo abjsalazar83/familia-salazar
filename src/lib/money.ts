@@ -8,6 +8,8 @@ export function parseCents(s: string): number | null {
   const [i, d = ''] = t.split('.');
   return Number(i) * 100 + Number((d + '00').slice(0, 2));
 }
+/** Euros sem cêntimos quando são ,00 (tabelas anuais). Único formato curto. */
+export const eurRound = (c: number) => eur(c).replace(/,00 €$/, ' €');
 export const centsToInput = (c: number) => (c / 100).toFixed(2).replace('.', ',');
 export const ptDate = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/');
 export const todayIso = () => {

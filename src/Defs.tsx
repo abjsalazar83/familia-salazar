@@ -50,13 +50,15 @@ export default function Settings({ data, online, theme, setTheme, mutate, run, s
   const copy = async () => { try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* sem permissão: o código fica visível */ } };
   return (
     <>
+      <h2 className="grp">preferências · limites, avisos, poupança e tema</h2>
       <h3>tema</h3>
       <ThemePicker theme={theme} setTheme={setTheme} />
-      <Lock />
-      <Screen />
       <LimitsEdit data={data} mutate={mutate} run={run} state={state} online={online} setToast={setToast} extra={extra} />
       <Savings data={data} extra={extra} online={online} settings />
       <NotifySettings data={data} extra={extra} online={online} />
+      <h2 className="grp">este aparelho</h2>
+      <Lock />
+      <Screen />
       <h3>família</h3>
       <ul className="list">{data.members.map((m) => <li key={m.id} className="li"><span className="grow">{m.display_name}</span>{m.id === data.me!.id && <span className="dim">tu</span>}</li>)}
         <li className="li"><span className="grow dim">convite</span><span className="num acc">{code}</span><button className="link" onClick={copy}>{copied ? 'copiado' : 'copiar'}</button></li></ul>

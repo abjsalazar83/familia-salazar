@@ -6,6 +6,8 @@ export type Op = {
   row: Record<string, unknown>;          // create: linha completa (com id gerado no cliente); patch: só os campos alterados
   status: 'pending' | 'failed'; error?: string; attempts: number; nextAt: number; createdAt: number;
 };
+/** Escrita pela fila local, partilhada por todos os ecrãs. */
+export type Mutate = (label: string, table: Table, kind: OpKind, id: string, row?: Record<string, unknown>) => Promise<boolean>;
 export type Snapshot = Record<Table, Array<Record<string, unknown> & { id: string }>>;
 
 export const uuid = () => crypto.randomUUID();

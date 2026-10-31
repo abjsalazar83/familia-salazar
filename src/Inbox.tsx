@@ -3,11 +3,10 @@ import { IcCheck, IcInbox, IcX } from './Icons';
 import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
 import { inboxItems, type InboxItem } from './lib/inbox';
 import { postExpense, type Payment } from './lib/plan';
-import { uuid, type Op, type Table } from './lib/outbox';
+import { uuid, type Mutate } from './lib/outbox';
 import type { FamilyData } from './lib/useFamily';
 import { nameOf, payerTone } from './lib/view';
 
-type Mutate = (label: string, table: Table, kind: Op['kind'], id: string, row?: Record<string, unknown>) => Promise<boolean>;
 const LABEL: Record<InboxItem['kind'], string> = { extrato: 'do extrato', receita: 'receita sem valor', lancar: 'pagamento fixo por lançar', confirmar: 'confirmar valor' };
 
 /** «Por rever»: uma só caixa para o extrato, receitas por preencher, fixas por lançar e confirmações ○. Tudo pela fila local. */

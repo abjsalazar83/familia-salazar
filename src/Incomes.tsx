@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { IcIn } from './Icons';
 import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
-import { uuid, type Op, type Table } from './lib/outbox';
+import { uuid, type Mutate } from './lib/outbox';
 import type { FamilyData } from './lib/useFamily';
-import { payerTone } from './lib/view';
+import { nameOf, payerTone } from './lib/view';
 import { INCOME_CATS, dueIncomeEntries, incomeEffect, otherShare, type IncomeCat, type IncomeRule, type SharedIncome } from './lib/income';
 
-type Mutate = (label: string, table: Table, kind: Op['kind'], id: string, row?: Record<string, unknown>) => Promise<boolean>;
-const nm = (d: FamilyData, id: string) => d.members.find((m) => m.id === id)?.display_name ?? '?';
+const nm = (d: FamilyData, id: string) => nameOf(d.members, id);
 
 /** Cria (uma vez por mês) as entradas por preencher das receitas fixas. O valor fica vazio: nunca inventado. */
 export function useAutoIncome(data: FamilyData, mutate: Mutate) {

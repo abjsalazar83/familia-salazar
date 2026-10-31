@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { useFamily, useOnline, type FamilyData } from './lib/useFamily';
 import { calculateHouseholdBalance, splitEqual } from './lib/balance';
-import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
+import { eur, eurRound, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
 import { CATS, type Bill, type Budget, type Expense, type HistoryMonth, type Item, type Member } from './lib/types';
 import { Savings, type Extra } from './Plan';
 import { hasV7, monthlyEq } from './lib/plan';
@@ -73,6 +73,7 @@ export default function History({ data, refetch, online, extra }: { data: Family
   };
   const ms = useMemo(() => (data.months ?? []).filter((m) => m && typeof m.ym === 'string').map((m) => ({ ...m, cats: m.cats ?? {}, total_cents: Number(m.total_cents) || 0 })), [data.months]);
   const [n, setN] = useState(12);
+  const [tab, setTab] = useState<'mes' | 'tend'>('mes');
   const [open, setOpen] = useState<string | null>(null);
   const a = useMemo(() => averages(ms, n), [ms, n]);
   const cats = useMemo(() => costByCategory(ms, n), [ms, n]);
@@ -97,19 +98,12 @@ export default function History({ data, refetch, online, extra }: { data: Family
   const tr = (t: number | null) => t == null ? <span className="dim">—</span> : <span className={t > 0 ? 'bad' : t < 0 ? 'ok' : 'dim'}>{t > 0 ? '↑' : t < 0 ? '↓' : '='}{Math.abs(t)}%</span>;
   return (
     <>
-      <div className="seg" role="radiogroup" aria-label="Período">{[12, 24, 60].map((k) => <button key={k} role="radio" aria-checked={n === k} className={n === k ? 'pri' : ''} onClick={() => setN(k)}>{k}m</button>)}</div>
+      <div className="seg" role="tablist" aria-label="Vista">{([['mes', 'Este mês'], ['tend', 'Tendências']] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'pri' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
+      {tab === 'mes' && <>
       <Overview data={data} extra={extra} />
-      <h3>histórico · {n} meses</h3>
-      {a && <div className="kpi">
-        <div><span className="big num">{eur(a.total)}</span><span className="dim per">/mês</span></div>
-        <div className="dim small">{eur(a.total * 12)}/ano · {eur(a.noExtra)}/mês sem extraordinários · {ymLabel(a.from)}–{ymLabel(a.to)}</div>
-      </div>}
-      <Bars height={70} items={last.map((m) => ({ label: ymLabel(m.ym), v: m.total_cents, dim: m.provisional }))} avg={a?.total} />
-      <div className="axis dim small"><span>{ymLabel(last[0].ym)}</span><span>┄ média</span><span>{ymLabel(last[last.length - 1].ym)}</span></div>
       <Savings data={data} extra={extra} online={online} spent={pace.total.spent} projected={pace.total.proj} />
       <Limits data={data} />
       <OffMonth ym={ym} flags={curFlags} extras={curExtras} reason={rs.r[ym] ?? ''} online={online} onSave={(t) => rs.save(ym, t, data.me?.id)} />
-      <label className="check small dim"><input type="checkbox" checked={noExtra} onChange={(e) => setNoExtra(e.target.checked)} /> excluir extraordinárias das médias</label>
       <h3>este mês · {ymLabel(pace.ym)} · dia {pace.day}/{pace.dim} · vs média {n}m</h3>
       <p className={pace.total.flag ? 'bad' : ''}><span className="big num">{eur(pace.total.spent)}</span> <span className="dim">até hoje → ritmo </span><span className="num">{eur(pace.total.proj)}</span>{pace.total.avg != null && <span className="dim"> · normal {eur(pace.total.avg)} · </span>}{pace.total.ratio != null && <span className={pace.total.ratio > 1.2 ? 'bad' : pace.total.ratio > 1 ? 'warn' : 'ok'}>{Math.round(pace.total.ratio * 100)}%</span>}</p>
       {pace.cats.length > 0 ? <table className="t"><tbody>{pace.cats.map((c) => <tr key={c.cat} className={c.flag ? 'bad' : ''}>
@@ -117,9 +111,20 @@ export default function History({ data, refetch, online, extra }: { data: Family
         : <p className="dim small">ainda sem despesas partilhadas este mês</p>}
       <p className="dim small">gasto · →projeção ao ritmo atual · normal · % do normal. ▲ = mais de 20% acima do normal.</p>
 
+      </>}
+      {tab === 'tend' && <>
+      <div className="seg" role="radiogroup" aria-label="Período">{[12, 24, 60].map((k) => <button key={k} role="radio" aria-checked={n === k} className={n === k ? 'pri' : ''} onClick={() => setN(k)}>{k}m</button>)}</div>
+      <h3>histórico · {n} meses</h3>
+      {a && <div className="kpi">
+        <div><span className="big num">{eur(a.total)}</span><span className="dim per">/mês</span></div>
+        <div className="dim small">{eur(a.total * 12)}/ano · {eur(a.noExtra)}/mês sem extraordinários · {ymLabel(a.from)}–{ymLabel(a.to)}</div>
+      </div>}
+      <Bars height={70} items={last.map((m) => ({ label: ymLabel(m.ym), v: m.total_cents, dim: m.provisional }))} avg={a?.total} />
+      <div className="axis dim small"><span>{ymLabel(last[0].ym)}</span><span>┄ média</span><span>{ymLabel(last[last.length - 1].ym)}</span></div>
+      <label className="check small dim"><input type="checkbox" checked={noExtra} onChange={(e) => setNoExtra(e.target.checked)} /> excluir extraordinárias das médias</label>
       <h3>quanto custa · €/mês · €/ano · % · vs {n}m antes</h3>
       <table className="t"><tbody>{cats.map((c) => <tr key={c.cat}>
-        <td>{c.cat}<i style={{ width: (c.month / cats[0].month) * 100 + '%' }} /></td><td className="num">{eur(c.month)}</td><td className="num dim">{eur(c.year).replace(',00', '')}</td><td className="num dim">{c.pct}%</td><td className="num">{tr(c.trend)}</td></tr>)}</tbody></table>
+        <td>{c.cat}<i style={{ width: (c.month / cats[0].month) * 100 + '%' }} /></td><td className="num">{eur(c.month)}</td><td className="num dim">{eurRound(c.year)}</td><td className="num dim">{c.pct}%</td><td className="num">{tr(c.trend)}</td></tr>)}</tbody></table>
 
       {tips.length > 0 && <><h3>onde poupar</h3>
         <ul className="list">{tips.map((t, k) => <li key={k} className="li"><div className="grow"><div>{t.title}</div><div className="dim small">{t.detail}</div></div>
@@ -138,6 +143,7 @@ export default function History({ data, refetch, online, extra }: { data: Family
           <span className="num">{eur(m.total_cents)}</span></button>
           {open === m.ym && <div className="sub dim small">{Object.entries(m.cats).sort((x, y) => y[1] - x[1]).map(([c, v]) => <div key={c} className="kv"><span>{c}</span><span className="num">{eur(v)}</span></div>)}{m.extra_cents > 0 && <div className="kv"><span>dos quais extraordinários</span><span className="num">{eur(m.extra_cents)}</span></div>}{m.note && <p>{m.note}</p>}{histFlags[m.ym]?.map((f) => <div key={f.what} className="warn">▲ {flagText(f)}</div>)}{(histFlags[m.ym]?.length > 0 || rs.r[m.ym]) && !rs.missing && <button className="link" disabled={!online} onClick={() => { const t = prompt(`Razão de ${ymLabel(m.ym)} estar fora do normal:`, rs.r[m.ym] ?? ''); if (t != null) rs.save(m.ym, t, data.me?.id); }}>{rs.r[m.ym] ? 'alterar razão' : 'indicar razão'}</button>}{!m.provisional && <button className="link" disabled={!online || busy} onClick={() => setOpenMonth(m.ym, true)}>reabrir mês</button>}</div>}
         </li>))}</ul>
+      </>}
     </>
   );
 }
