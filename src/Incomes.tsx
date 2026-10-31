@@ -85,7 +85,6 @@ export function IncomeSection({ data, mutate, state, me }: { data: FamilyData; m
   const [edit, setEdit] = useState<SharedIncome | 'new' | null>(null);
   const list = (data.incomes ?? []).filter((i) => !i.is_deleted);
   const confirmI = (i: SharedIncome) => mutate(i.confirmed_by ? 'Confirmação retirada.' : 'Valor confirmado.', 'shared_incomes', 'patch', i.id, i.confirmed_by ? { confirmed_by: null, confirmed_at: null } : { confirmed_by: me, confirmed_at: new Date().toISOString() });
-  const stopRule = (r: IncomeRule) => confirm(`Parar a receita fixa «${r.name}»? As entradas antigas ficam no histórico.`) && mutate('Receita fixa parada.', 'income_rules', 'patch', r.id, { active: false });
   return (
     <>
       <h3>receitas partilhadas · {list.length}</h3>
@@ -104,7 +103,7 @@ export function IncomeSection({ data, mutate, state, me }: { data: FamilyData; m
             : <span className={'num eff ' + (eff > 0 ? 'pos' : eff < 0 ? 'neg' : 'neu')}><b>{eff > 0 ? '+' : eff < 0 ? '−' : ''}{eur(Math.abs(eff))}</b><small className="dim">entrou {eur(i.amount_cents!)}</small></span>}
           {!empty && i.received_by !== me && <button className="cf" aria-label={i.confirmed_by ? 'Confirmada' : 'Confirmar este valor'} disabled={!can} onClick={() => confirmI(i)}>{i.confirmed_by ? '✓' : '○'}</button>}
         </li>; })}</ul>}
-      {(data.incomeRules ?? []).filter((r) => r.active).length > 0 && <p className="dim small">fixas: {(data.incomeRules ?? []).filter((r) => r.active).map((r) => <button key={r.id} className="link small" onClick={() => stopRule(r)}>{r.name} (dia {r.day}, {nm(data, r.received_by)}) ✕</button>)}</p>}
+      {(data.incomeRules ?? []).some((r) => r.active) && <p className="dim small">receitas fixas: geridas em Fixas.</p>}
     </>
   );
 }
