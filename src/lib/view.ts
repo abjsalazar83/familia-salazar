@@ -34,3 +34,5 @@ export function paidBy(list: Expense[]): Record<string, number> {
   for (const e of list) if (!e.is_deleted) o[e.paid_by] = (o[e.paid_by] ?? 0) + e.amount_cents;
   return o;
 }
+/** Nome de um membro (único sítio). */
+export const nameOf = (ms: Member[], id: string | null | undefined) => ms.find((m) => m.id === id)?.display_name ?? '?';

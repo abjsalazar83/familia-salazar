@@ -117,15 +117,18 @@ async function notifyDue(items: ReturnType<typeof upcoming>, days: number) {
 }
 
 /** Próximos pagamentos e subscrições. */
-export function Upcoming({ data, extra, online }: { data: FamilyData; extra: Extra; online: boolean }) {
-  const v7 = hasV7(extra.payments); const names = Object.fromEntries(data.members.map((m) => [m.id, m.display_name]));
+export type PayMutate = (label: string, table: 'payments', kind: 'create' | 'patch', id: string, row: Record<string, unknown>) => Promise<boolean>;
+/** Pagamentos: os sincronizados (com a fila local por cima) quando existem; senão os do carregamento antigo. */
+export const paymentsOf = (data: FamilyData, extra: Extra) => data.payments ?? extra.payments;
+export function Upcoming({ data, extra, mutate }: { data: FamilyData; extra: Extra; mutate: PayMutate }) {
+  const pays = paymentsOf(data, extra); const v7 = hasV7(pays); const names = Object.fromEntries(data.members.map((m) => [m.id, m.display_name]));
   const today = todayIso();
-  const list = useMemo(() => upcoming(extra.payments, today), [extra.payments, today]);
+  const list = useMemo(() => upcoming(pays, today), [pays, today]);
   const days = extra.settings?.notify_days ?? 3;
   const [edit, setEdit] = useState<string | null>(null); const [f, setF] = useState<Record<string, string>>({}); const [err, setErr] = useState('');
   useEffect(() => { notifyDue(list, days).catch(() => {}); }, [list, days]);
   if (extra.missing) return <p className="dim small">Pagamentos: falta correr migration_v6.sql no Supabase.</p>;
-  const tot = monthlyTotals(extra.payments, today); const monthly = tot.conjunta + Object.values(tot.pessoal).reduce((a, b) => a + b, 0);
+  const tot = monthlyTotals(pays, today); const monthly = tot.conjunta + Object.values(tot.pessoal).reduce((a, b) => a + b, 0);
   const startEdit = (p?: Payment) => {
     setErr(''); setEdit(p?.id ?? 'novo');
     setF({ name: p?.name ?? '', amount: p?.amount_cents != null ? centsToInput(p.amount_cents) : '', period: p?.period ?? 'mensal', next_date: p?.next_date ?? '', payer: p?.payer ?? '', account: p?.account ?? '', note: p?.note ?? '',
@@ -140,11 +143,12 @@ export function Upcoming({ data, extra, online }: { data: FamilyData; extra: Ext
       const row = { name: f.name.trim(), amount_cents: money(f.amount), period: f.period, next_date: f.next_date || null, payer: f.payer.trim() || null, account: f.account.trim() || null, note: f.note.trim() || null,
         new_amount_cents: money(f.new_amount), new_period: f.new_period || null, new_from: f.new_from || null } as Record<string, unknown>;
       if (v7) { if (f.kind === 'pessoal' && !f.owner) throw new Error('escolhe de quem é'); Object.assign(row, { kind: f.kind, owner_member: f.owner || null, category: f.category, payer: f.owner ? names[f.owner] : row.payer }); }
-      await db(() => edit === 'novo' ? supabase.from('payments').insert({ id: uuid(), family_id: data.me!.family_id, ...row }) : supabase.from('payments').update(row).eq('id', edit!));
-      await extra.reload(); setEdit(null);
+      const id = edit === 'novo' ? uuid() : edit!;
+      const ok = edit === 'novo' ? await mutate('Pagamento criado.', 'payments', 'create', id, { id, family_id: data.me!.family_id, is_deleted: false, ...row }) : await mutate('Pagamento atualizado.', 'payments', 'patch', id, row);
+      if (ok) setEdit(null);
     } catch (e) { setErr((e as Error).message); }
   };
-  const remove = async (id: string) => { if (!confirm('Arquivar este pagamento? Fica no histórico da base de dados.')) return; await db(() => supabase.from('payments').update({ is_deleted: true }).eq('id', id)).catch((e) => setErr(e.message)); await extra.reload(); setEdit(null); };
+  const remove = async (id: string) => { if (!confirm('Arquivar este pagamento? Fica no histórico da base de dados.')) return; if (await mutate('Pagamento arquivado (fica no histórico).', 'payments', 'patch', id, { is_deleted: true })) setEdit(null); };
   const form = <div className="form">
     <label className="fld"><span>nome</span><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
     <div className="row2"><label className="fld"><span>valor</span><input inputMode="decimal" className="num" placeholder="por preencher" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></label>
@@ -162,7 +166,7 @@ export function Upcoming({ data, extra, online }: { data: FamilyData; extra: Ext
       <label className="fld"><span>período</span><select value={f.new_period} onChange={(e) => setF({ ...f, new_period: e.target.value })}><option value="">igual</option><option value="mensal">mensal</option><option value="trimestral">trimestral</option><option value="anual">anual</option></select></label>
       <label className="fld"><span>a partir de</span><input type="date" value={f.new_from} onChange={(e) => setF({ ...f, new_from: e.target.value })} /></label></div>
     {err && <p className="err small">{err}</p>}
-    <div className="row"><button className="pri" disabled={!online} onClick={save}>guardar</button><button onClick={() => setEdit(null)}>cancelar</button>
+    <div className="row"><button className="pri" onClick={save}>guardar</button><button onClick={() => setEdit(null)}>cancelar</button>
       {edit !== 'novo' && <button className="danger" onClick={() => remove(edit!)}>arquivar</button>}</div></div>;
   return (
     <section className="group">
@@ -178,7 +182,7 @@ export function Upcoming({ data, extra, online }: { data: FamilyData; extra: Ext
           </button>
           {edit === u.p.id && form}
         </li>))}</ul>
-      {edit === 'novo' ? form : <button className="link" disabled={!online} onClick={() => startEdit()}>adicionar pagamento</button>}
+      {edit === 'novo' ? form : <button className="link" onClick={() => startEdit()}>adicionar pagamento</button>}
     </section>
   );
 }
@@ -260,35 +264,4 @@ export function NotifySettings({ data, extra, online }: { data: FamilyData; extr
     <li className="li"><span className="grow">notificações</span>{perm === 'granted' ? <span className="ok">ativas</span> : perm === 'unsupported' ? <span className="dim small">indisponíveis</span> : <button onClick={ask}>ativar</button>}</li>
     <li className="li"><span className="grow">antecedência</span><select style={{ width: 'auto' }} disabled={!online} aria-label="Dias de antecedência" value={days} onChange={(e) => setDays(Number(e.target.value))}>{[1, 2, 3, 5, 7].map((n) => <option key={n} value={n}>{n} dia{n > 1 ? 's' : ''}</option>)}</select></li>
   </ul><p className="dim small">O aviso aparece quando a app é aberta (ou sincroniza) dentro do prazo.</p></>);
-}
-
-type PostMutate = (label: string, table: 'expenses', kind: 'create', id: string, row: Record<string, unknown>) => Promise<boolean>;
-/** «Por lançar»: ocorrências vencidas dos pagamentos fixos; um toque cria a despesa (conjunta 50/50 ou pessoal). */
-export function PorLancar({ data, extra, mutate, online }: { data: FamilyData; extra: Extra; mutate: PostMutate; online: boolean }) {
-  const today = todayIso();
-  const items = useMemo(() => porLancar(extra.payments, data.expenses as never, today), [extra.payments, data.expenses, today]);
-  const [vals, setVals] = useState<Record<string, string>>({}); const [busy, setBusy] = useState(''); const [err, setErr] = useState('');
-  const names = Object.fromEntries(data.members.map((m) => [m.id, m.display_name]));
-  if (!items.length) return null;
-  const key = (x: { p: Payment; date: string }) => x.p.id + '|' + x.date;
-  const post = async (x: (typeof items)[number]) => {
-    setErr(''); const v = vals[key(x)]; const amount = v != null && v.trim() !== '' ? parseCents(v) : x.amount;
-    if (!amount || amount <= 0) return setErr(`Indica o valor de ${x.p.name}.`);
-    setBusy(key(x)); const id = uuid();
-    const row = postExpense(x.p, x.date, amount, data.members.map((m) => m.id), data.me!.id);
-    const ok = await mutate(`${x.p.name} lançado.`, 'expenses', 'create', id, { id, family_id: data.me!.family_id, ...row, is_deleted: false, created_at: new Date().toISOString() });
-    if (ok && online) await supabase.from('payments').update({ last_posted: x.date, expense_id: id }).eq('id', x.p.id).then(() => extra.reload(), () => {});
-    setBusy('');
-  };
-  const skip = async (x: (typeof items)[number]) => {
-    if (!confirm(`Marcar ${x.p.name} de ${ptDate(x.date)} como já registado (sem criar despesa)?`)) return;
-    await supabase.from('payments').update({ last_posted: x.date }).eq('id', x.p.id).then(() => extra.reload(), () => setErr('Sem ligação.'));
-  };
-  return (<section className="group"><h3>por lançar · {items.length}</h3>
-    <ul className="list ios">{items.map((x, i) => <li key={key(x)} className="li in" style={{ animationDelay: i * 30 + 'ms' }}>
-      <span className="grow"><span className="t2">{x.p.name}</span><span className="dim small block">{ptDate(x.date)} · {x.p.kind === 'pessoal' ? 'pessoal ' + (names[x.p.owner_member ?? ''] ?? '') : 'conjunta 50/50'}</span></span>
-      <input className="num amt" inputMode="decimal" aria-label={`Valor de ${x.p.name}`} placeholder="valor" value={vals[key(x)] ?? (x.amount != null ? centsToInput(x.amount) : '')} onChange={(e) => setVals({ ...vals, [key(x)]: e.target.value })} />
-      <button className="pri" disabled={busy === key(x)} onClick={() => post(x)}>lançar</button>
-      <button className="dim" aria-label="Já registado" title="já registado" disabled={!online} onClick={() => skip(x)}><IcX /></button>
-    </li>)}</ul>{err && <p className="err small">{err}</p>}</section>);
 }

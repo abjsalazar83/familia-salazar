@@ -1,10 +1,10 @@
 import { IcCheck, IcGear, IcPlus, IcSwap } from './Icons';
 import Shopping from './Shopping';
-import { IncomeSection, ReviewSection, useAutoIncome } from './Incomes';
+import { IncomeSection, useAutoIncome } from './Incomes';
 import { incomeMonth } from './lib/income';
 const APP_V = 'fs-v26';
 import { matchExpense } from './lib/search';
-import { settlementEffect, payerTone, groupByCategory, paidBy } from './lib/view';
+import { settlementEffect, payerTone, groupByCategory, paidBy, nameOf } from './lib/view';
 import { confirmCount } from './lib/anomaly';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -13,7 +13,8 @@ import { useFamily, useOnline, type FamilyData } from './lib/useFamily';
 import { calculateHouseholdBalance, splitEqual } from './lib/balance';
 import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
 import { CATS, type Bill, type Budget, type Expense, type HistoryMonth, type Item, type Member } from './lib/types';
-import { useExtra, Savings, Upcoming, CloseMonth, Money, NotifySettings, PorLancar, type Extra } from './Plan';
+import { useExtra, Savings, Upcoming, CloseMonth, Money, NotifySettings, paymentsOf, type Extra } from './Plan';
+import { Inbox } from './Inbox';
 import { hasV7, monthlyEq } from './lib/plan';
 import { VoiceButton } from './Voice';
 import type { VoiceGuess } from './lib/voice';
@@ -246,14 +247,13 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
 
 type Mutate = (label: string, table: Table, kind: Op['kind'], id: string, row?: Record<string, unknown>) => Promise<boolean>;
 export type Ctx = { data: FamilyData; run: (l: string, f: () => PromiseLike<{ error: unknown }>) => Promise<boolean>; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; online: boolean; setToast: (t: Toast) => void; extra: Extra };
-const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras', recurring_bills: 'Conta', budgets: 'Limite', shared_incomes: 'Receita', income_rules: 'Receita fixa', month_closes: 'Fecho de mês' };
+const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras', recurring_bills: 'Conta', budgets: 'Limite', shared_incomes: 'Receita', income_rules: 'Receita fixa', month_closes: 'Fecho de mês', payments: 'Pagamento fixo' };
 const describeOp = (o: Op) => `${OPN[o.table]}: ${o.kind === 'create' ? 'novo' : o.kind === 'delete' ? 'apagar' : 'alterar'}${o.row.description ? ' «' + o.row.description + '»' : o.row.name ? ' «' + o.row.name + '»' : ''}`;
 export function Mark({ s }: { s?: 'pending' | 'failed' }) {
   return s ? <span className={'tag ' + (s === 'failed' ? 'err' : 'warn')}>{s === 'failed' ? 'Falhou' : 'Por sincronizar'}</span> : null;
 }
 type PanelProps = { panel: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz'; setPanel: (p: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz') => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
 
-const nameOf = (ms: Member[], id: string) => ms.find((m) => m.id === id)?.display_name ?? '?';
 function useBalance(d: FamilyData) {
   return useMemo(() => calculateHouseholdBalance(d.members.map((m) => m.id), d.expenses, d.settlements, d.incomes ?? []), [d]);
 }
@@ -479,6 +479,7 @@ function Month(p: Ctx & PanelProps) {
   return (
     <>
       <BalanceCard data={data} state={p.state} panel={panel} setPanel={setPanel} />
+      <Inbox data={data} payments={paymentsOf(data, p.extra)} mutate={mutate} />
       {panel === 'saldar' && <SettleForm {...p} close={() => setPanel('')} />}
       {panel === 'despesa' && !p.editing ? <ExpenseForm key={rc ? 'rc' : vc ? 'v' + vc.text : 'n'} {...p} receipt={rc} voice={vc} close={() => { setRc(null); setVc(null); setPanel(''); }} />
         : (!panel || panel === 'talao' || panel === 'voz') && <div className="acts">
@@ -486,7 +487,6 @@ function Month(p: Ctx & PanelProps) {
           <ReceiptButton big={panel === 'talao'} onResult={(r) => { setRc(r); setVc(null); p.openExpense(null); }} />
           <VoiceButton key={panel} auto={panel === 'voz'} big={panel === 'voz'} onResult={(g) => { setRc(null); setVc(g); p.openExpense(null); }} /></div>}
       {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={mutate as never} online={p.online} close={() => setPanel('')} />}
-      <PorLancar data={data} extra={p.extra} mutate={mutate as never} online={p.online} />
       <div className="sumbar" aria-live="polite"><span className="pay-blue">Pagaste {eur(paid[me] ?? 0)}</span> · <span className="pay-pink">{otherN} pagou {eur(otherM ? paid[otherM.id] ?? 0 : 0)}</span> · <b>{!bal.debt ? 'contas certas' : bal.debt.to === me ? `${otherN} deve-te ${eur(bal.debt.cents)}` : `Deves ${eur(bal.debt.cents)} a ${otherN}`}</b></div>
       {(im.total > 0 || im.pending > 0) && <div className="sumbar inc-bar"><span>Receitas partilhadas {eur(im.total)}</span> · <span>passa para o outro {eur(im.owed)}</span>{im.pending > 0 && <> · <span className="warn">{im.pending} por preencher</span></>}</div>}
       <div className="segc" role="radiogroup" aria-label="Quem pagou">{([['tudo', 'Tudo'], ['eu', 'Eu'], ['outro', otherN]] as const).map(([k, l]) => <button key={k} role="radio" aria-checked={who === k} className={who === k ? 'on' : ''} onClick={() => setWho(k)}>{l}</button>)}</div>
@@ -503,7 +503,6 @@ function Month(p: Ctx & PanelProps) {
           <div className="grp-b"><div><ul className="list">{g.items.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} me={me} onConfirm={confirmE} onEdit={() => p.openExpense(e)} />)}</ul></div></div>
         </section>; })}</div> : <p className="dim">Sem despesas.</p>}
       <label className="check small dim"><input type="checkbox" checked={showGone} onChange={(e) => setShowGone(e.target.checked)} /> mostrar retiradas</label>
-      <ReviewSection data={data} mutate={mutate} me={me} />
       <IncomeSection data={data} mutate={mutate} state={p.state} me={me} />
       {data.settlements.length > 0 && <details className="grp-d"><summary><h3 style={{ display: 'inline' }}>histórico de acertos · {data.settlements.length}</h3></summary><ul className="list">{data.settlements.map((s) => (
         <li key={s.id} className={'li pay-' + payerTone(data.members, s.from_member)}>
@@ -555,8 +554,8 @@ function Bills({ data, mutate, state, extra, online }: Ctx) {
     if (val.trim() !== '' && c === null) return setErr('valor inválido (ex.: 12,50)');
     if (await mutate('Conta atualizada.', 'recurring_bills', 'patch', b.id, { amount_cents: c, estimate: false })) setEdit(null);
   };
-  const up = <Upcoming data={data} extra={extra} online={online} />;
-  if (hasV7(extra.payments)) return up;
+  const up = <Upcoming data={data} extra={extra} mutate={mutate as never} />;
+  if (hasV7(paymentsOf(data, extra))) return up;
   if (!bills.length) return <>{up}<p className="dim">sem contas recorrentes · corre migration_v3.sql e o seed privado no Supabase</p></>;
   return (
     <>

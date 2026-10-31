@@ -1,5 +1,5 @@
 import type { Pref } from './shop';
-import type { MonthClose } from './plan';
+import type { MonthClose, Payment } from './plan';
 import type { IncomeRule, SharedIncome } from './income';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -8,7 +8,7 @@ import type { Bill, Budget, Expense, Family, HistoryMonth, Item, Member, Note, S
 import { idbGet, idbSet } from './idb';
 import { applyOps, classify, discardOp, enqueue, flush, mergeAfterFlush, retryOp, type ExecResult, type Op, type Snapshot, type Table } from './outbox';
 
-export type FamilyData = { family: Family | null; me: Member | null; members: Member[]; expenses: Expense[]; settlements: Settlement[]; items: Item[]; notes: Note[]; months: HistoryMonth[]; bills: Bill[]; budgets: Budget[]; prefs?: Pref[]; incomes: SharedIncome[]; incomeRules: IncomeRule[]; review?: Expense[]; closes?: MonthClose[] };
+export type FamilyData = { family: Family | null; me: Member | null; members: Member[]; expenses: Expense[]; settlements: Settlement[]; items: Item[]; notes: Note[]; months: HistoryMonth[]; bills: Bill[]; budgets: Budget[]; prefs?: Pref[]; incomes: SharedIncome[]; incomeRules: IncomeRule[]; review?: Expense[]; closes?: MonthClose[]; payments?: Payment[] };
 const EMPTY: FamilyData = { family: null, me: null, members: [], expenses: [], settlements: [], items: [], notes: [], months: [], bills: [], budgets: [], incomes: [], incomeRules: [] };
 type Cache = { data: FamilyData; syncedAt: string };
 
@@ -62,7 +62,7 @@ export function useFamily(session: Session | null) {
       let next = EMPTY;
       if (me) {
         const fid = me.family_id;
-        const [f, m, e, s, i, n, h, b, bu, sp, si, ir, mc] = await Promise.all([
+        const [f, m, e, s, i, n, h, b, bu, sp, si, ir, mc, py] = await Promise.all([
           supabase.from('families').select('id,name,invite_code').eq('id', fid).single(),
           supabase.from('family_members').select('*').eq('family_id', fid).order('created_at'),
           supabase.from('expenses').select('*').eq('family_id', fid).order('date', { ascending: false }).order('created_at', { ascending: false }),
@@ -76,11 +76,12 @@ export function useFamily(session: Session | null) {
           supabase.from('shared_incomes').select('*').eq('family_id', fid).order('date', { ascending: false }).order('created_at', { ascending: false }),
           supabase.from('income_rules').select('*').eq('family_id', fid).eq('is_deleted', false).order('created_at'),
           supabase.from('month_closes').select('*').eq('family_id', fid).order('ym'),
+          supabase.from('payments').select('*').eq('family_id', fid),
         ]);
         for (const r of [f, m, e, s, i, n]) if (r.error) throw r.error;
         // Antes de correr migration_v3.sql estas tabelas não existem: a app continua a funcionar sem histórico.
         const opt = <T,>(r: { data: T[] | null; error: unknown }) => (r.error ? [] : r.data ?? []);
-        next = { family: f.data, me, members: m.data!, expenses: e.data!, settlements: s.data!, items: i.data!, notes: n.data!, months: opt<HistoryMonth>(h), bills: opt<Bill>(b), budgets: opt<Budget>(bu), prefs: opt<Pref>(sp), incomes: opt<SharedIncome>(si), incomeRules: opt<IncomeRule>(ir), closes: opt<MonthClose>(mc) };
+        next = { family: f.data, me, members: m.data!, expenses: e.data!, settlements: s.data!, items: i.data!, notes: n.data!, months: opt<HistoryMonth>(h), bills: opt<Bill>(b), budgets: opt<Budget>(bu), prefs: opt<Pref>(sp), incomes: opt<SharedIncome>(si), incomeRules: opt<IncomeRule>(ir), closes: opt<MonthClose>(mc), payments: py.error ? undefined : (py.data as Payment[]) };
       }
       const at = new Date();
       setServer(next); setStatus('ready'); setError(''); setSyncedAt(at);
@@ -132,7 +133,7 @@ export function useFamily(session: Session | null) {
   useEffect(() => {
     if (!fid) return;
     const ch = supabase.channel('familia-' + fid);
-    for (const t of ['expenses', 'settlements', 'shopping_items', 'family_members', 'history_notes', 'history_months', 'recurring_bills', 'budgets', 'shopping_prefs', 'shared_incomes', 'income_rules', 'month_closes'])
+    for (const t of ['expenses', 'settlements', 'shopping_items', 'family_members', 'history_notes', 'history_months', 'recurring_bills', 'budgets', 'shopping_prefs', 'shared_incomes', 'income_rules', 'month_closes', 'payments'])
       ch.on('postgres_changes', { event: '*', schema: 'public', table: t, filter: `family_id=eq.${fid}` }, () => refetch());
     ch.subscribe((st) => setLive(st === 'SUBSCRIBED'));
     const vis = () => { if (document.visibilityState === 'visible') sync(); };
@@ -149,10 +150,10 @@ export function useFamily(session: Session | null) {
   const discard = useCallback((opId: string) => setQueue(discardOp(qRef.current, opId)), [setQueue]);
 
   const { data, state } = useMemo(() => {
-    const snap: Snapshot = { expenses: server.expenses, settlements: server.settlements, shopping_items: server.items, recurring_bills: server.bills ?? [], budgets: server.budgets ?? [], shared_incomes: server.incomes ?? [], income_rules: server.incomeRules ?? [], month_closes: server.closes ?? [] } as unknown as Snapshot;
+    const snap: Snapshot = { expenses: server.expenses, settlements: server.settlements, shopping_items: server.items, recurring_bills: server.bills ?? [], budgets: server.budgets ?? [], shared_incomes: server.incomes ?? [], income_rules: server.incomeRules ?? [], month_closes: server.closes ?? [], payments: server.payments ?? [] } as unknown as Snapshot;
     const r = applyOps(snap, queue);
     const allE = r.data.expenses as unknown as Expense[];
-    return { data: { ...server, expenses: allE.filter((x) => !x.review), review: allE.filter((x) => x.review === 'por_rever' && !x.is_deleted), settlements: r.data.settlements as unknown as Settlement[], items: r.data.shopping_items as unknown as Item[], months: server.months ?? [], bills: r.data.recurring_bills as unknown as Bill[], budgets: (r.data.budgets as unknown as Budget[]).filter((x) => !x.is_deleted), incomes: r.data.shared_incomes as unknown as SharedIncome[], incomeRules: (r.data.income_rules as unknown as IncomeRule[]).filter((x) => !x.is_deleted), closes: (r.data.month_closes as unknown as MonthClose[]).filter((x) => !x.is_deleted) }, state: r.state };
+    return { data: { ...server, expenses: allE.filter((x) => !x.review), review: allE.filter((x) => x.review === 'por_rever' && !x.is_deleted), settlements: r.data.settlements as unknown as Settlement[], items: r.data.shopping_items as unknown as Item[], months: server.months ?? [], bills: r.data.recurring_bills as unknown as Bill[], budgets: (r.data.budgets as unknown as Budget[]).filter((x) => !x.is_deleted), incomes: r.data.shared_incomes as unknown as SharedIncome[], incomeRules: (r.data.income_rules as unknown as IncomeRule[]).filter((x) => !x.is_deleted), closes: (r.data.month_closes as unknown as MonthClose[]).filter((x) => !x.is_deleted), payments: server.payments ? (r.data.payments as unknown as Payment[]).filter((x) => !x.is_deleted) : undefined }, state: r.state };
   }, [server, queue]);
 
   return { data, state, queue, status, error, syncedAt, live, syncing, refetch: sync, mutate, retry, discard };
