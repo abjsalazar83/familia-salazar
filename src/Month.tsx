@@ -4,7 +4,7 @@ import { IcList, IcPen, IcPlus } from './Icons';
 import { IncomeForm, IncomeRows, useAutoIncome } from './Incomes';
 import type { SharedIncome } from './lib/income';
 import { incomeMonth } from './lib/income';
-import { matchExpense } from './lib/search';
+import { matchExpense, matchIncome, monthIncomes } from './lib/search';
 import { payerTone, groupByCategory, paidBy, nameOf } from './lib/view';
 import { confirmCount } from './lib/anomaly';
 import type { } from '@supabase/supabase-js';
@@ -22,13 +22,13 @@ export function Month(p: Ctx & PanelProps) {
   const [showGone, setShowGone] = useState(false); const [who, setWho] = useState<'tudo' | 'eu' | 'outro'>('tudo');
   const [open, setOpen] = useState<Record<string, boolean>>({});
     const [q, setQ] = useState(''); const [incEdit, setIncEdit] = useState<SharedIncome | null>(null);
-  const incN = (data.incomes ?? []).filter((i) => !i.is_deleted && i.amount_cents != null).length;
+  const ym = todayIso().slice(0, 7); const incList = monthIncomes(data.incomes ?? [], ym).filter((i) => matchIncome(i, q)); const incN = incList.length;
   const list = data.expenses.filter((e) => (showGone || !e.is_deleted) && (who === 'tudo' || (who === 'eu' ? e.paid_by === me : e.paid_by !== me)) && matchExpense(e, q));
   const confirmS = (id: string) => mutate('Liquidação confirmada.', 'settlements', 'patch', id, { confirmed: true, confirmed_at: new Date().toISOString() });
   const confirmE = (e: Expense) => mutate(e.confirmed_by ? 'Confirmação retirada.' : 'Valor confirmado.', 'expenses', 'patch', e.id, e.confirmed_by ? { confirmed_by: null, confirmed_at: null } : { confirmed_by: me, confirmed_at: new Date().toISOString() });
   const otherM = data.members.find((m) => m.id !== me); const otherN = otherM?.display_name ?? 'Outro';
   const groups = groupByCategory(list, me); const paid = paidBy(data.expenses); const bal = useBalance(data);
-  const ym = todayIso().slice(0, 7); const cc = confirmCount(data.expenses, ym);
+  const cc = confirmCount(data.expenses, ym);
   useAutoIncome(data, mutate);
   const im = incomeMonth(data.incomes ?? [], ym);
   return (
@@ -37,7 +37,7 @@ export function Month(p: Ctx & PanelProps) {
       <Inbox data={data} payments={paymentsOf(data, p.extra)} mutate={mutate} open={panel === 'rever'} toggle={() => setPanel(panel === 'rever' ? '' : 'rever')} />
       {panel === 'saldar' && <SettleForm {...p} close={() => setPanel('')} />}
       {panel === 'despesa' && !p.editing ? <ExpenseForm key={rc ? 'rc' : vc ? 'v' + vc.text : 'n'} {...p} receipt={rc} voice={vc} close={() => { setRc(null); setVc(null); setPanel(''); }} />
-        : panel === 'receita' ? <div className="card sheet"><IncomeForm key={incEdit?.id ?? 'n'} data={data} mutate={mutate} editing={incEdit} close={() => { setIncEdit(null); setPanel(''); }} /></div>
+        : panel === 'receita' ? <div className="card sheet"><IncomeForm key={incEdit?.id ?? 'n'} data={data} mutate={mutate} editing={incEdit} close={() => { setIncEdit(null); setPanel(''); }} toExpense={incEdit ? undefined : () => setPanel('mais')} /></div>
         : (!panel || panel === 'rever') ? <button className="act pri wide-act add-btn" onClick={() => setPanel('mais')}><span className="ic"><IcPlus /></span>Adicionar</button>
         : (panel === 'mais' || panel === 'talao' || panel === 'voz') && <AddSheet panel={panel} close={() => setPanel('')} income={() => { setIncEdit(null); setPanel('receita'); }}
             write={() => { setRc(null); setVc(null); p.openExpense(null); }} receipt={(r) => { setRc(r); setVc(null); p.openExpense(null); }}
@@ -48,9 +48,9 @@ export function Month(p: Ctx & PanelProps) {
       <div className="segc" role="radiogroup" aria-label="Quem pagou">{([['tudo', 'Tudo'], ['eu', 'Eu'], ['outro', otherN]] as const).map(([k, l]) => <button key={k} role="radio" aria-checked={who === k} className={who === k ? 'on' : ''} onClick={() => setWho(k)}>{l}</button>)}</div>
       {panel === 'despesa' && p.editing && <div ref={(el) => { if (el && el.dataset.id !== p.editing!.id) { el.dataset.id = p.editing!.id; el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }}><ExpenseForm key={p.editing.id} {...p} close={() => setPanel('')} /></div>}
       <input className="search" type="search" inputMode="search" aria-label="Procurar movimento" placeholder="Procurar (ex.: mercadona, 80)" value={q} onChange={(e) => setQ(e.target.value)} />
-      <h3>movimentos · {list.length + (q ? 0 : incN)}{q && ` de ${data.expenses.filter((e) => !e.is_deleted).length}`}</h3>
+      <h3>movimentos · {list.length + incN}{q && ` de ${data.expenses.filter((e) => !e.is_deleted).length}`}</h3>
       {cc.total > 0 && <p className="small"><span className={cc.done === cc.total ? 'ok' : 'warn'}>{cc.done} de {cc.total} confirmadas</span><span className="dim"> este mês</span></p>}
-      {list.length || (!q && incN) ? <div className="groups">{groups.map((g) => {
+      {list.length || incN ? <div className="groups">{groups.map((g) => {
         const isOpen = !!q.trim() || !!open[g.category] || (!!p.editing && g.items.some((e) => e.id === p.editing!.id));
         return <section key={g.category} className={'grp' + (isOpen ? ' open' : '')}>
           <button className={'grp-h' + (g.payers.length === 1 ? ' pay-' + payerTone(data.members, g.payers[0]) : ' pay-mix')} aria-expanded={isOpen} onClick={() => setOpen({ ...open, [g.category]: !open[g.category] })}>
@@ -58,9 +58,9 @@ export function Month(p: Ctx & PanelProps) {
           </button>
           <div className="grp-b"><div><ul className="list">{g.items.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} me={me} onConfirm={confirmE} onEdit={() => p.openExpense(e)} />)}</ul></div></div>
         </section>; })}
-        {!q && incN > 0 && <section className={'grp' + (open['+'] ? ' open' : '')}>
-          <button className="grp-h pay-mix" aria-expanded={!!open['+']} onClick={() => setOpen({ ...open, '+': !open['+'] })}><span className="chev" aria-hidden>›</span><span className="grow grp-t"><span>+ Receitas partilhadas</span><span className="dim num"><span className="grp-n"> · {incN}</span> · +{eur(im.total)}</span></span></button>
-          <div className="grp-b"><div><ul className="list"><IncomeRows data={data} mutate={mutate} state={p.state} me={me} onEdit={(i) => { setIncEdit(i); setPanel('receita'); }} /></ul></div></div>
+        {incN > 0 && <section className={'grp' + ((open['+'] || q.trim()) ? ' open' : '')}>
+          <button className="grp-h pay-mix" aria-expanded={!!open['+']} onClick={() => setOpen({ ...open, '+': !open['+'] })}><span className="chev" aria-hidden>›</span><span className="grow grp-t"><span>+ Receitas partilhadas</span><span className="dim num"><span className="grp-n"> · {incN}</span> · +{eur(incList.reduce((a, i) => a + (i.amount_cents ?? 0), 0))}</span></span></button>
+          <div className="grp-b"><div><ul className="list"><IncomeRows list={incList} data={data} mutate={mutate} state={p.state} me={me} onEdit={(i) => { setIncEdit(i); setPanel('receita'); }} /></ul></div></div>
         </section>}</div> : <p className="dim">Sem movimentos.</p>}
       <label className="check small dim"><input type="checkbox" checked={showGone} onChange={(e) => setShowGone(e.target.checked)} /> mostrar retiradas</label>
       {data.settlements.length > 0 && <details className="grp-d"><summary><h3 style={{ display: 'inline' }}>histórico de acertos · {data.settlements.length}</h3></summary><ul className="list">{data.settlements.map((s) => (

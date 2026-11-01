@@ -23,7 +23,7 @@ export function useAutoIncome(data: FamilyData, mutate: Mutate) {
   }, [data.incomeRules, data.incomes, data.me, mutate]);
 }
 
-export function IncomeForm({ data, mutate, editing, close }: { data: FamilyData; mutate: Mutate; editing: SharedIncome | null; close: () => void }) {
+export function IncomeForm({ data, mutate, editing, close, toExpense }: { data: FamilyData; mutate: Mutate; editing: SharedIncome | null; close: () => void; toExpense?: () => void }) {
   const me = data.me!; const ms = data.members;
   const [f, setF] = useState(() => ({
     amount: editing?.amount_cents != null ? centsToInput(editing.amount_cents) : '', by: editing?.received_by ?? ms.find((m) => payerTone(ms, m.id) === 'pink')?.id ?? me.id,
@@ -58,6 +58,7 @@ export function IncomeForm({ data, mutate, editing, close }: { data: FamilyData;
   const share = cents && other ? otherShare({ amount_cents: cents, received_by: f.by, receiver_pct: pct, is_deleted: false }) : 0;
   return (
     <div className="form">
+      {toExpense && <div className="segc sign" role="radiogroup" aria-label="Despesa ou receita"><button role="radio" aria-checked={false} onClick={toExpense}>− Despesa</button><button role="radio" aria-checked className="on">+ Receita</button></div>}
       <h2>{editing ? (editing.amount_cents == null ? 'Preencher receita fixa' : 'Editar receita') : 'Receita partilhada'}</h2>
       <label className="field"><span className="lab">Quanto entrou? (€)</span><input className="num" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="0,00" autoFocus /></label>
       <span className="lab">Quem recebeu?</span>
@@ -80,8 +81,7 @@ export function IncomeForm({ data, mutate, editing, close }: { data: FamilyData;
 }
 
 /** Receitas partilhadas do mês como movimentos «+», na mesma lista das despesas. As por preencher vivem no aviso «por confirmar». */
-export function IncomeRows({ data, mutate, state, me, onEdit }: { data: FamilyData; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; me: string; onEdit: (i: SharedIncome) => void }) {
-  const list = (data.incomes ?? []).filter((i) => !i.is_deleted && i.amount_cents != null);
+export function IncomeRows({ list, data, mutate, state, me, onEdit }: { list: SharedIncome[]; data: FamilyData; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; me: string; onEdit: (i: SharedIncome) => void }) {
   const confirmI = (i: SharedIncome) => mutate(i.confirmed_by ? 'Confirmação retirada.' : 'Valor confirmado.', 'shared_incomes', 'patch', i.id, i.confirmed_by ? { confirmed_by: null, confirmed_at: null } : { confirmed_by: me, confirmed_at: new Date().toISOString() });
   return <>{list.map((i) => {
     const eff = incomeEffect(i, me); const can = i.received_by !== me && (!i.confirmed_by || i.confirmed_by === me);
