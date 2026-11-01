@@ -23,7 +23,7 @@ export function useAutoIncome(data: FamilyData, mutate: Mutate) {
   }, [data.incomeRules, data.incomes, data.me, mutate]);
 }
 
-function IncomeForm({ data, mutate, editing, close }: { data: FamilyData; mutate: Mutate; editing: SharedIncome | null; close: () => void }) {
+export function IncomeForm({ data, mutate, editing, close }: { data: FamilyData; mutate: Mutate; editing: SharedIncome | null; close: () => void }) {
   const me = data.me!; const ms = data.members;
   const [f, setF] = useState(() => ({
     amount: editing?.amount_cents != null ? centsToInput(editing.amount_cents) : '', by: editing?.received_by ?? ms.find((m) => payerTone(ms, m.id) === 'pink')?.id ?? me.id,
@@ -79,30 +79,19 @@ function IncomeForm({ data, mutate, editing, close }: { data: FamilyData; mutate
   );
 }
 
-/** Lista de receitas partilhadas + receitas fixas. */
-export function IncomeSection({ data, mutate, state, me }: { data: FamilyData; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; me: string }) {
-  const [edit, setEdit] = useState<SharedIncome | 'new' | null>(null);
-  const list = (data.incomes ?? []).filter((i) => !i.is_deleted);
+/** Receitas partilhadas do mês como movimentos «+», na mesma lista das despesas. As por preencher vivem no aviso «por confirmar». */
+export function IncomeRows({ data, mutate, state, me, onEdit }: { data: FamilyData; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; me: string; onEdit: (i: SharedIncome) => void }) {
+  const list = (data.incomes ?? []).filter((i) => !i.is_deleted && i.amount_cents != null);
   const confirmI = (i: SharedIncome) => mutate(i.confirmed_by ? 'Confirmação retirada.' : 'Valor confirmado.', 'shared_incomes', 'patch', i.id, i.confirmed_by ? { confirmed_by: null, confirmed_at: null } : { confirmed_by: me, confirmed_at: new Date().toISOString() });
-  return (
-    <>
-      <h3>receitas partilhadas · {list.length}</h3>
-      {edit ? <IncomeForm key={edit === 'new' ? 'n' : edit.id} data={data} mutate={mutate} editing={edit === 'new' ? null : edit} close={() => setEdit(null)} />
-        : <button className="link" onClick={() => setEdit('new')}>+ receita partilhada</button>}
-      {list.length > 0 && <ul className="list">{list.map((i) => {
-        const eff = incomeEffect(i, me); const empty = i.amount_cents == null;
-        const can = i.received_by !== me && !empty && (!i.confirmed_by || i.confirmed_by === me);
-        return <li key={i.id} id={'i-' + i.id} className={'li inc pay-' + payerTone(data.members, i.received_by)}>
-          <span className={'inc-ic tone-' + payerTone(data.members, i.received_by)} aria-hidden><IcIn /></span>
-          <button className="grow plain" onClick={() => setEdit(i)}>
-            <div>{i.note || i.category} <span className="dim small">· {i.category}</span> {state[i.id] && <span className="tag warn">Por sincronizar</span>}</div>
-            <div className="dim small">{ptDate(i.date)} · recebeu {nm(data, i.received_by)}{i.receiver_pct !== 50 ? ` · ${i.receiver_pct}/${100 - i.receiver_pct}` : ''}{i.rule_id ? ' · fixa' : ''}</div>
-          </button>
-          {empty ? <button className="pri small" onClick={() => setEdit(i)}>preencher valor</button>
-            : <span className={'num eff ' + (eff > 0 ? 'pos' : eff < 0 ? 'neg' : 'neu')}><b>{eff > 0 ? '+' : eff < 0 ? '−' : ''}{eur(Math.abs(eff))}</b><small className="dim">entrou {eur(i.amount_cents!)}</small></span>}
-          {!empty && i.received_by !== me && <button className="cf" aria-label={i.confirmed_by ? 'Confirmada' : 'Confirmar este valor'} disabled={!can} onClick={() => confirmI(i)}>{i.confirmed_by ? '✓' : '○'}</button>}
-        </li>; })}</ul>}
-      {(data.incomeRules ?? []).some((r) => r.active) && <p className="dim small">receitas fixas: geridas em Fixas.</p>}
-    </>
-  );
+  return <>{list.map((i) => {
+    const eff = incomeEffect(i, me); const can = i.received_by !== me && (!i.confirmed_by || i.confirmed_by === me);
+    return <li key={i.id} id={'i-' + i.id} className={'li inc pay-' + payerTone(data.members, i.received_by)}>
+      <span className={'inc-ic tone-' + payerTone(data.members, i.received_by)} aria-hidden><IcIn /></span>
+      <button className="grow plain" onClick={() => onEdit(i)}>
+        <div>{i.note || i.category} <span className="dim small">· receita</span> {state[i.id] && <span className="tag warn">Por sincronizar</span>}</div>
+        <div className="dim small">{ptDate(i.date)} · {i.category} · recebeu {nm(data, i.received_by)}{i.receiver_pct !== 50 ? ` · ${i.receiver_pct}/${100 - i.receiver_pct}` : ''}{i.rule_id ? ' · fixa' : ''}</div>
+      </button>
+      <span className={'num eff tone-' + payerTone(data.members, i.received_by)}><b>+{eur(i.amount_cents!)}</b><small className="dim">acerto {eff > 0 ? '+' : eff < 0 ? '−' : ''}{eur(Math.abs(eff))}</small></span>
+      {i.received_by !== me && <button className="cf" aria-label={i.confirmed_by ? 'Confirmada' : 'Confirmar este valor'} disabled={!can} onClick={() => confirmI(i)}>{i.confirmed_by ? '✓' : '○'}</button>}
+    </li>; })}</>;
 }

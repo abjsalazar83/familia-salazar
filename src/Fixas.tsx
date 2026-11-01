@@ -1,4 +1,4 @@
-// Ecrã «Fixas»: pagamentos e receitas fixas num só sítio.
+// Ecrã «Fixas»: só modelos (pagamentos e receitas fixas). O que vence aparece no Mês, em «por confirmar».
 import { useState } from 'react';
 import { IcIn } from './Icons';
 import { type IncomeRule } from './lib/income';
@@ -39,8 +39,8 @@ export function Bills({ data, mutate, state, extra, online }: Ctx) {
           <div className="grow"><div>{r.name} <Mark s={state[r.id]} /></div><div className="dim small">dia {r.day} · {r.category} · recebe {nameOf(data.members, r.received_by)}{r.receiver_pct !== 50 ? ` · ${r.receiver_pct}/${100 - r.receiver_pct}` : ''}</div></div>
           <span className={r.active ? 'okt small' : 'warn small'}>{r.active ? 'ativa' : 'parada'}</span>
           <button className="link small" onClick={() => toggleRule(r)}>{r.active ? 'parar' : 'retomar'}</button>
-        </li>)}</ul> : <p className="dim small">Sem receitas fixas. Cria uma em «receitas partilhadas» no Mês, marcando «repetir todos os meses».</p>}
-        <p className="dim small">O valor de cada mês nunca é inventado: aparece em «Por rever» para preencher.</p></section>}
+        </li>)}</ul> : <p className="dim small">Sem receitas fixas. Cria uma em Mês › Adicionar › + Receita, marcando «repete todos os meses».</p>}
+        <p className="dim small">O valor de cada mês nunca é inventado: aparece no Mês, no aviso «por confirmar», para preencher.</p></section>}
       {f !== 'rec' && showOld && <>
       <h3>contas da casa (antigas)</h3>
       <div className="kpi"><div><span className="big num">{eur(total)}</span><span className="dim per">/mês</span></div>

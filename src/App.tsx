@@ -1,6 +1,6 @@
 import { IcCheck, IcGear, IcSwap } from './Icons';
 import Shopping from './Shopping';
-const APP_V = 'fs-v34';
+const APP_V = 'fs-v35';
 import { settlementEffect, payerTone, nameOf } from './lib/view';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -163,7 +163,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
     el.addEventListener('touchstart', start, { passive: true }); el.addEventListener('touchend', end, { passive: true });
     return () => { el.removeEventListener('touchstart', start); el.removeEventListener('touchend', end); };
   }, []);
-  const [panel, setPanel] = useState<'' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz' | 'mais'>(''); const [checkout, setCheckout] = useState(false);
+  const [panel, setPanel] = useState<'' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz' | 'mais' | 'receita' | 'rever'>(''); const [checkout, setCheckout] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [toast, setToast] = useState<Toast>(null);
   const [locked, unlocked] = useLock();
@@ -245,7 +245,7 @@ const describeOp = (o: Op) => `${OPN[o.table]}: ${o.kind === 'create' ? 'novo' :
 export function Mark({ s }: { s?: 'pending' | 'failed' }) {
   return s ? <span className={'tag ' + (s === 'failed' ? 'err' : 'warn')}>{s === 'failed' ? 'Falhou' : 'Por sincronizar'}</span> : null;
 }
-export type PanelProps = { panel: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz' | 'mais'; setPanel: (p: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz' | 'mais') => void; goList: () => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
+export type PanelProps = { panel: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz' | 'mais' | 'receita' | 'rever'; setPanel: (p: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz' | 'mais' | 'receita' | 'rever') => void; goList: () => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
 
 export function useBalance(d: FamilyData) {
   return useMemo(() => calculateHouseholdBalance(d.members.map((m) => m.id), d.expenses, d.settlements, d.incomes ?? []), [d]);

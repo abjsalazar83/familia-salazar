@@ -12,4 +12,10 @@ describe('por rever', () => {
     }, [], 'A', '2026-10-31');
     expect(r.map((x) => x.kind + ':' + x.id)).toEqual(['extrato:r1', 'receita:i1', 'confirmar:c1']);
   });
+  it('fixas por lançar (despesas, incl. 100% do outro) e receitas fixas por preencher entram na mesma lista «por confirmar»', () => {
+    const pay = { id: 'p1', name: 'SAD', amount_cents: null, period: 'mensal', next_date: '2026-10-31', kind: 'conjunta', split: 'outro100', owner_member: 'A', category: 'Saúde', is_deleted: false } as never;
+    const r = inboxItems({ incomes: [{ id: 'ab', amount_cents: null, is_deleted: false } as never], expenses: [] }, [pay], 'A', '2026-10-31');
+    expect(r.map((x) => x.kind)).toEqual(['receita', 'lancar']);
+    expect(inboxItems({ expenses: [] }, [], 'A', '2026-10-31')).toHaveLength(0);
+  });
 });

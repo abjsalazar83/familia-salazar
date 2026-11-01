@@ -7,13 +7,13 @@ import { uuid, type Mutate } from './lib/outbox';
 import type { FamilyData } from './lib/useFamily';
 import { nameOf, payerTone } from './lib/view';
 
-const LABEL: Record<InboxItem['kind'], string> = { extrato: 'do extrato', receita: 'receita sem valor', lancar: 'pagamento fixo por lançar', confirmar: 'confirmar valor' };
+const LABEL: Record<InboxItem['kind'], string> = { extrato: 'do extrato', receita: '+ receita fixa por preencher', lancar: '− fixa por lançar', confirmar: 'confirmar valor' };
 
-/** «Por rever»: uma só caixa para o extrato, receitas por preencher, fixas por lançar e confirmações ○. Tudo pela fila local. */
-export function Inbox({ data, payments, mutate }: { data: FamilyData; payments: Payment[]; mutate: Mutate }) {
+/** Aviso «N por confirmar»: uma só lista para o extrato, receitas por preencher, fixas por lançar e confirmações ○. Tudo pela fila local. */
+export function Inbox({ data, payments, mutate, open, toggle }: { data: FamilyData; payments: Payment[]; mutate: Mutate; open: boolean; toggle: () => void }) {
   const me = data.me!.id; const today = todayIso(); const now = () => new Date().toISOString();
   const items = useMemo(() => inboxItems(data, payments, me, today), [data, payments, me, today]);
-  const [vals, setVals] = useState<Record<string, string>>({}); const [err, setErr] = useState(''); const [open, setOpen] = useState(true);
+  const [vals, setVals] = useState<Record<string, string>>({}); const [err, setErr] = useState('');
   if (!items.length) return null;
   const val = (x: InboxItem, def: number | null) => { const v = vals[x.id]; return v != null && v.trim() !== '' ? parseCents(v) : def; };
   const act = async (x: InboxItem) => {
@@ -36,10 +36,10 @@ export function Inbox({ data, payments, mutate }: { data: FamilyData; payments: 
   const amount = (x: InboxItem) => x.kind === 'receita' ? null : x.kind === 'lancar' ? x.amount : x.e.amount_cents;
   const n = (k: InboxItem['kind']) => items.filter((x) => x.kind === k).length;
   return (
-    <section className="card inbox" aria-label="Por rever">
-      <button className="row between plain wide" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="row"><span className="ic" aria-hidden><IcInbox /></span><h2 style={{ margin: 0 }}>Por rever · {items.length}</h2></span><span className="chev" aria-hidden>{open ? '⌃' : '⌄'}</span></button>
-      <p className="dim small">{[n('extrato') && `${n('extrato')} do extrato (não contam)`, n('lancar') && `${n('lancar')} por lançar`, n('receita') && `${n('receita')} receitas sem valor`, n('confirmar') && `${n('confirmar')} por confirmar`].filter(Boolean).join(' · ')}</p>
+    <section className={'inbox' + (open ? ' card' : '')} aria-label="Por confirmar">
+      <button className="banner row between wide" aria-expanded={open} onClick={toggle}>
+        <span className="row"><span className="ic" aria-hidden><IcInbox /></span><b>{items.length} por confirmar</b></span><span className="dim small">{open ? 'fechar' : 'rever ›'}</span></button>
+      {open && <p className="dim small">{[n('extrato') && `${n('extrato')} do extrato (não contam)`, n('lancar') && `${n('lancar')} fixas por lançar`, n('receita') && `${n('receita')} receitas por preencher`, n('confirmar') && `${n('confirmar')} por confirmar`].filter(Boolean).join(' · ')}</p>}
       {open && <ul className="list">{items.map((x) => {
         const needsVal = x.kind === 'receita' || x.kind === 'lancar';
         return <li key={x.kind + x.id} className={'li pay-' + payerTone(data.members, who(x))}>
