@@ -132,7 +132,7 @@ export function Upcoming({ data, extra, mutate }: { data: FamilyData; extra: Ext
     setErr(''); setEdit(p?.id ?? 'novo');
     setF({ name: p?.name ?? '', amount: p?.amount_cents != null ? centsToInput(p.amount_cents) : '', period: p?.period ?? 'mensal', next_date: p?.next_date ?? '', payer: p?.payer ?? '', account: p?.account ?? '', note: p?.note ?? '',
       new_amount: p?.new_amount_cents != null ? centsToInput(p.new_amount_cents) : '', new_period: p?.new_period ?? '', new_from: p?.new_from ?? '',
-      kind: p?.kind ?? 'conjunta', owner: p?.owner_member ?? '', category: p?.category ?? 'Casa' });
+      kind: p?.kind ?? 'conjunta', owner: p?.owner_member ?? '', category: p?.category ?? 'Casa', split: (p?.split ?? '50/50') as string });
   };
   const save = async () => {
     setErr('');
@@ -141,7 +141,7 @@ export function Upcoming({ data, extra, mutate }: { data: FamilyData; extra: Ext
       if (!f.name.trim()) throw new Error('falta o nome');
       const row = { name: f.name.trim(), amount_cents: money(f.amount), period: f.period, next_date: f.next_date || null, payer: f.payer.trim() || null, account: f.account.trim() || null, note: f.note.trim() || null,
         new_amount_cents: money(f.new_amount), new_period: f.new_period || null, new_from: f.new_from || null } as Record<string, unknown>;
-      if (v7) { if (f.kind === 'pessoal' && !f.owner) throw new Error('escolhe de quem é'); Object.assign(row, { kind: f.kind, owner_member: f.owner || null, category: f.category, payer: f.owner ? names[f.owner] : row.payer }); }
+      if (v7) { if (f.kind === 'pessoal' && !f.owner) throw new Error('escolhe de quem é'); Object.assign(row, { kind: f.kind, split: f.kind === 'conjunta' ? f.split : '50/50', owner_member: f.owner || null, category: f.category, payer: f.owner ? names[f.owner] : row.payer }); }
       const id = edit === 'novo' ? uuid() : edit!;
       const ok = edit === 'novo' ? await mutate('Pagamento criado.', 'payments', 'create', id, { id, family_id: data.me!.family_id, is_deleted: false, ...row }) : await mutate('Pagamento atualizado.', 'payments', 'patch', id, row);
       if (ok) setEdit(null);
@@ -155,7 +155,8 @@ export function Upcoming({ data, extra, mutate }: { data: FamilyData; extra: Ext
     {v7 && <><div className="seg" role="radiogroup" aria-label="Tipo">{(['conjunta', 'pessoal'] as const).map((k) => <button key={k} role="radio" aria-checked={f.kind === k} className={f.kind === k ? 'pri' : ''} onClick={() => setF({ ...f, kind: k })}>{k === 'conjunta' ? 'Conjunta 50/50' : 'Pessoal'}</button>)}</div>
       <div className="row2"><label className="fld"><span>{f.kind === 'pessoal' ? 'de quem' : 'quem paga'}</span><select value={f.owner} onChange={(e) => setF({ ...f, owner: e.target.value })}><option value="">{f.kind === 'pessoal' ? 'escolher' : 'quem lançar'}</option>{data.members.map((m) => <option key={m.id} value={m.id}>{m.display_name}</option>)}</select></label>
         <label className="fld"><span>categoria</span><select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{CATS.map((c) => <option key={c}>{c}</option>)}</select></label></div>
-      <p className="dim small">{f.kind === 'pessoal' ? 'Pessoal: conta no teu mês e na poupança, não entra no acerto.' : 'Conjunta: lançada como partilhada 50/50 e entra no acerto.'}</p></>}
+      {f.kind === 'conjunta' && <div className="seg" role="radiogroup" aria-label="Divisão">{(['50/50', 'outro100'] as const).map((k) => <button key={k} role="radio" aria-checked={f.split === k} className={f.split === k ? 'pri' : ''} onClick={() => setF({ ...f, split: k })}>{k === '50/50' ? '50/50' : '100% do outro'}</button>)}</div>}
+      <p className="dim small">{f.kind === 'pessoal' ? 'Pessoal: conta no teu mês e na poupança, não entra no acerto.' : f.split === 'outro100' ? 'Conjunta: quem paga adianta; o outro deve o valor todo no acerto.' : 'Conjunta: lançada como partilhada 50/50 e entra no acerto.'}</p></>}
     <div className="row2"><label className="fld"><span>próxima data</span><input type="date" value={f.next_date} onChange={(e) => setF({ ...f, next_date: e.target.value })} /></label>
       {!v7 && <label className="fld"><span>quem paga</span><input value={f.payer} onChange={(e) => setF({ ...f, payer: e.target.value })} /></label>}</div>
     <label className="fld"><span>conta / cartão</span><input value={f.account} placeholder="ex.: Visa …1234" onChange={(e) => setF({ ...f, account: e.target.value })} /></label>
@@ -175,7 +176,7 @@ export function Upcoming({ data, extra, mutate }: { data: FamilyData; extra: Ext
       <ul className="list ios">{list.map((u, i) => (
         <li key={u.p.id} className={'li col in' + (u.soon ? ' soon' : '')} style={{ animationDelay: Math.min(i, 10) * 25 + 'ms' }}>
           <button className="row-btn" onClick={() => (edit === u.p.id ? setEdit(null) : startEdit(u.p))}>
-            <span className="grow"><span className="t2">{u.p.name}</span><span className="dim small block">{[u.date ? ptDate(u.date) : 'data por preencher', v7 ? (u.p.kind === 'pessoal' ? 'pessoal ' + (names[u.p.owner_member ?? ''] ?? '') : 'conjunta') : u.p.payer, u.p.account].filter(Boolean).join(' · ')}{u.changes ? ` · novo preço a ${ptDate(u.p.new_from!)}` : ''}</span></span>
+            <span className="grow"><span className="t2">{u.p.name}</span><span className="dim small block">{[u.date ? ptDate(u.date) : 'data por preencher', v7 ? (u.p.kind === 'pessoal' ? 'pessoal ' + (names[u.p.owner_member ?? ''] ?? '') : u.p.split === 'outro100' ? `paga ${names[u.p.owner_member ?? ''] ?? '?'} · 100% do outro` : 'conjunta') : u.p.payer, u.p.account].filter(Boolean).join(' · ')}{u.changes ? ` · novo preço a ${ptDate(u.p.new_from!)}` : ''}</span></span>
             <span className="r"><span className="num">{u.amount != null ? eur(u.amount) : <span className="warn small">valor?</span>}</span>
               <span className={'small block ' + (u.soon ? 'warn' : 'dim')}>{u.days == null ? '' : u.days === 0 ? 'hoje' : `${u.days} dia${u.days > 1 ? 's' : ''}`}{u.amount != null && <span className="dim"> {PERN[termsAt2(u)]}</span>}</span></span>
           </button>

@@ -5,7 +5,7 @@ export type Payment = {
   payer: string | null; account: string | null; note: string | null;
   new_amount_cents: number | null; new_period: Period | null; new_from: string | null; is_deleted: boolean;
   // v7 (opcionais: a app funciona antes da migração)
-  kind?: 'conjunta' | 'pessoal'; split?: '50/50'; category?: string; owner_member?: string | null; last_posted?: string | null; expense_id?: string | null;
+  kind?: 'conjunta' | 'pessoal'; split?: PaySplit; category?: string; owner_member?: string | null; last_posted?: string | null; expense_id?: string | null;
 };
 const STEP: Record<Period, number> = { mensal: 1, bimestral: 2, trimestral: 3, anual: 12 };
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -65,14 +65,17 @@ export function porLancar(ps: Payment[], exps: { payment_id?: string | null; pay
 }
 
 /** Linha de despesa a criar a partir de uma ocorrência. Conjunta → partilhada 50/50 (entra no acerto); pessoal → só do dono. */
+/** Divisão de um pagamento conjunto: metade cada, ou o outro paga tudo (ex.: despesa de saúde de um, paga pelo outro). */
+export type PaySplit = '50/50' | 'outro100';
 export function postExpense(p: Payment, date: string, amount: number, memberIds: string[], me: string) {
   const pessoal = p.kind === 'pessoal';
   const payer = (p.owner_member && memberIds.includes(p.owner_member)) ? p.owner_member : me;
   const other = memberIds.find((m) => m !== payer);
-  const half = Math.round(amount / 2);
+  const full = p.split === 'outro100';
+  const half = full ? amount : Math.round(amount / 2);
   const shares: Record<string, number> = pessoal || !other ? {} : { [payer]: amount - half, [other]: half };
   return { amount_cents: amount, description: p.name, category: p.category || 'Casa', paid_by: payer, type: pessoal || !other ? 'pessoal' as const : 'partilhada' as const,
-    split_mode: '50/50' as const, shares, date, payment_id: p.id, payment_due: date };
+    split_mode: (full && !pessoal && other ? 'personalizada' : '50/50') as '50/50' | 'personalizada', shares, date, payment_id: p.id, payment_due: date };
 }
 /** Total mensal equivalente: conjunto e de cada pessoa (pessoais). */
 export function monthlyTotals(ps: Payment[], today: string) {

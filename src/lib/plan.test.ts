@@ -53,6 +53,12 @@ describe('por lançar', () => {
     const s = postExpense({ ...base, kind: 'pessoal', owner_member: 'b' }, '2026-10-15', 900, ['a', 'b'], 'a');
     expect(s).toMatchObject({ type: 'pessoal', paid_by: 'b', shares: {} });
   });
+  it('conjunta «100% do outro»: o outro deve o valor todo', () => {
+    const c = postExpense({ ...base, split: 'outro100' }, '2026-11-30', 4148, ['a', 'b'], 'b');
+    expect(c).toMatchObject({ type: 'partilhada', paid_by: 'a', split_mode: 'personalizada', shares: { a: 0, b: 4148 } });
+    expect(postExpense({ ...base, split: 'outro100' }, '2026-11-30', 4148, ['a'], 'a')).toMatchObject({ type: 'pessoal', shares: {} });
+    expect(postExpense({ ...base, split: 'outro100', kind: 'pessoal' }, '2026-11-30', 500, ['a', 'b'], 'a')).toMatchObject({ type: 'pessoal', shares: {} });
+  });
   it('totais', () => {
     const t = monthlyTotals([base, { ...base, id: 'p2', kind: 'pessoal', owner_member: 'a', amount_cents: 3000, period: 'trimestral' }], '2026-10-28');
     expect(t).toEqual({ conjunta: 1000, pessoal: { a: 1000 } });
