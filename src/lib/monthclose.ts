@@ -20,3 +20,9 @@ export function closeMessage(ym: string, names: Record<string, string>, lists: R
     (c.carry > 0 ? ` Os ${fmt(c.carry)} que sobram passam para ${mesNome(nextYm(ym))} (linha «mês ${mesNome(ym)}»).` : '');
 }
 
+
+/** Início do período em aberto: dia 1 do mês a seguir ao último fecho ativo (sem fechos → tudo). */
+export function openFrom(closes: Pick<MonthClose, 'ym' | 'is_deleted'>[] = []): string | null {
+  const yms = closes.filter((c) => !c.is_deleted).map((c) => c.ym).sort();
+  return yms.length ? nextYm(yms[yms.length - 1]) + '-01' : null;
+}

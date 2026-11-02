@@ -11,6 +11,7 @@ import type { } from '@supabase/supabase-js';
 import { eur, ptDate, todayIso } from './lib/money';
 import { type Expense } from './lib/types';
 import { CloseMonth, paymentsOf } from './Plan';
+import { openFrom } from './lib/monthclose';
 import { Inbox } from './Inbox';
 import { VoiceButton } from './Voice';
 import type { VoiceGuess } from './lib/voice';
@@ -23,11 +24,12 @@ export function Month(p: Ctx & PanelProps) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
     const [q, setQ] = useState(''); const [incEdit, setIncEdit] = useState<SharedIncome | null>(null);
   const ym = todayIso().slice(0, 7); const incList = monthIncomes(data.incomes ?? [], ym).filter((i) => matchIncome(i, q)); const incN = incList.length;
-  const list = data.expenses.filter((e) => (showGone || !e.is_deleted) && (who === 'tudo' || (who === 'eu' ? e.paid_by === me : e.paid_by !== me)) && matchExpense(e, q));
+  const from = openFrom([...(data.closes ?? []), ...(p.extra?.closes ?? [])]); const openE = data.expenses.filter((e) => q || !from || e.date >= from);
+  const list = openE.filter((e) => (showGone || !e.is_deleted) && (who === 'tudo' || (who === 'eu' ? e.paid_by === me : e.paid_by !== me)) && matchExpense(e, q));
   const confirmS = (id: string) => mutate('Liquidação confirmada.', 'settlements', 'patch', id, { confirmed: true, confirmed_at: new Date().toISOString() });
   const confirmE = (e: Expense) => mutate(e.confirmed_by ? 'Confirmação retirada.' : 'Valor confirmado.', 'expenses', 'patch', e.id, e.confirmed_by ? { confirmed_by: null, confirmed_at: null } : { confirmed_by: me, confirmed_at: new Date().toISOString() });
   const otherM = data.members.find((m) => m.id !== me); const otherN = otherM?.display_name ?? 'Outro';
-  const groups = groupByCategory(list, me); const paid = paidBy(data.expenses); const bal = useBalance(data);
+  const groups = groupByCategory(list, me); const paid = paidBy(openE.filter((e) => !from || e.date >= from)); const bal = useBalance(data);
   const cc = confirmCount(data.expenses, ym);
   useAutoIncome(data, mutate);
   const im = incomeMonth(data.incomes ?? [], ym);
@@ -48,7 +50,7 @@ export function Month(p: Ctx & PanelProps) {
       <div className="segc" role="radiogroup" aria-label="Quem pagou">{([['tudo', 'Tudo'], ['eu', 'Eu'], ['outro', otherN]] as const).map(([k, l]) => <button key={k} role="radio" aria-checked={who === k} className={who === k ? 'on' : ''} onClick={() => setWho(k)}>{l}</button>)}</div>
       {panel === 'despesa' && p.editing && <div ref={(el) => { if (el && el.dataset.id !== p.editing!.id) { el.dataset.id = p.editing!.id; el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }}><ExpenseForm key={p.editing.id} {...p} close={() => setPanel('')} /></div>}
       <input className="search" type="search" inputMode="search" aria-label="Procurar movimento" placeholder="Procurar (ex.: mercadona, 80)" value={q} onChange={(e) => setQ(e.target.value)} />
-      <h3>movimentos · {list.length + incN}{q && ` de ${data.expenses.filter((e) => !e.is_deleted).length}`}</h3>
+      <h3>movimentos{from && !q ? ` desde ${from.slice(8)}/${from.slice(5,7)}` : ''} · {list.length + incN}{q && ` de ${data.expenses.filter((e) => !e.is_deleted).length}`}</h3>
       {cc.total > 0 && <p className="small"><span className={cc.done === cc.total ? 'ok' : 'warn'}>{cc.done} de {cc.total} confirmadas</span><span className="dim"> este mês</span></p>}
       {list.length || incN ? <div className="groups">{groups.map((g) => {
         const isOpen = !!q.trim() || !!open[g.category] || (!!p.editing && g.items.some((e) => e.id === p.editing!.id));
