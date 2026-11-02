@@ -29,7 +29,7 @@ export function classify(name: string, learned?: Record<string, string | null | 
 }
 export const sectionRank = (s: string | null | undefined) => { const i = (SECTIONS as readonly string[]).indexOf(s ?? 'Outros'); return i < 0 ? SECTIONS.length : i; };
 
-export type Pref = { key: string; name: string; section?: string | null; basic?: boolean; unit?: Unit | null; last_price_cents?: number | null; uses: number; last_used: string };
+export type Pref = { key: string; name: string; section?: string | null; basic?: boolean; unit?: Unit | null; last_price_cents?: number | null; web_ref?: string | null; uses: number; last_used: string };
 /** Sugestões: com texto → prefixo de palavra; sem texto → mais frequentes/recentes. Exclui o que já está na lista. */
 export function suggest(prefs: Pref[], q: string, exclude: Set<string>, now = Date.now(), k = 6): Pref[] {
   const n = norm(q);

@@ -343,3 +343,15 @@ button.pri { min-width: 44px; }
 .pinfo .pl-s { display: flex; gap: 4px; min-width: 0; justify-content: flex-end; }
 .mspark { display: block; width: 100%; height: 24px; margin-top: 4px; }
 .mspark path { fill: none; stroke: var(--acc); stroke-width: 2; vector-effect: non-scaling-stroke; }
+/* fs-v39 · revisão do talão + preço da internet. */
+.rrev .rl { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
+.rrev .rl li { padding: 8px 10px; border-radius: 10px; background: var(--card); min-width: 0; opacity: .7; }
+.rrev .rl li.on { opacity: 1; }
+.rrev .rl-t { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
+.rrev .rl-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.rrev select { width: 100%; max-width: 100%; margin-top: 6px; min-height: 44px; }
+.web { display: grid; gap: 4px; margin-top: 4px; }
+.web-b { display: flex; justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; align-items: center; text-align: left; padding: 4px 8px; border-radius: 8px; background: transparent; border: 1px solid var(--line, #ddd); color: inherit; font: inherit; min-width: 0; }
+.web-b.on { border-color: var(--acc); }
+.web-b .pl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.wtag { font-size: 11px; font-weight: 600; color: var(--acc); }

@@ -11,7 +11,7 @@ export type Settlement = {
   id: string; family_id: string; from_member: string; to_member: string; amount_cents: number;
   date: string; method: string | null; confirmed: boolean; confirmed_at: string | null; is_deleted: boolean; created_at: string;
 };
-export type Item = { id: string; family_id: string; name: string; quantity: string | null; note: string | null; bought: boolean; created_at: string; created_by?: string; qty?: number | null; unit?: Unit | null; section?: string | null; basic?: boolean; price_cents?: number | null; paid_cents?: number | null; archived_at?: string | null; expense_id?: string | null };
+export type Item = { id: string; family_id: string; name: string; quantity: string | null; note: string | null; bought: boolean; created_at: string; created_by?: string; qty?: number | null; unit?: Unit | null; section?: string | null; basic?: boolean; price_cents?: number | null; paid_cents?: number | null; unit_price_cents?: number | null; archived_at?: string | null; expense_id?: string | null };
 export type Unit = 'un' | 'kg' | 'g' | 'L' | 'pack';
 export type Note = { id: string; kind: 'acerto' | 'fixa' | 'referencia'; title: string; value_text: string | null; period: string | null; sort: number };
 export const CATS = ['Supermercado', 'Casa', 'Lazer', 'Saúde', 'Escola', 'Transporte', 'Subscrições', 'Outros'];
