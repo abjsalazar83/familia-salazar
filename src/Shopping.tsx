@@ -8,6 +8,7 @@ import { uuid } from './lib/outbox';
 import { payerTone } from './lib/view';
 import { eur, parseCents, centsToInput } from './lib/money';
 import { SECTIONS, UNITS, classify, keyOf, suggest, step, qtyText, parseList, estimate, matchReceiptLines, type Pref } from './lib/shop';
+import { purchases, stats, expected, baseLabel, type Stats } from './lib/prices';
 import { VoiceButton, voiceSupported } from './Voice';
 import { ReceiptButton, type ReceiptResult } from './Receipt';
 import { IcPlus } from './Icons';
@@ -29,7 +30,12 @@ export default function Shopping(ctx: Ctx & { checkout?: boolean }) {
   const secOf = (i: Item) => i.section ?? classify(i.name, learned);
   const groups = SECTIONS.map((s) => ({ s, items: todo.filter((i) => secOf(i) === s).sort((a, b) => a.name.localeCompare(b.name, 'pt')) })).filter((g) => g.items.length);
   const prices = useMemo(() => Object.fromEntries(prefs.map((p) => [p.key, p.last_price_cents])), [prefs]);
-  const est = estimate(todo.concat(cart), prices);
+  const hist = useMemo(() => purchases(data.items, data.expenses), [data.items, data.expenses]);
+  const stOf = (i: Item) => stats(hist[keyOf(i.name)]);
+  // Cesto: média paga (€/kg, €/L, €/un × quantidade) quando há histórico; senão o preço habitual.
+  const est = (() => { let total = 0, known = 0; const rest: Item[] = [];
+    for (const i of todo.concat(cart)) { const e = expected(stOf(i), i.qty, i.unit); if (e != null) { total += e; known++; } else rest.push(i); }
+    const r = estimate(rest, prices); return { total: total + r.total, known: known + r.known, missing: r.missing }; })();
   const missingBasics = prefs.filter((p) => p.basic && !inList.has(p.key));
   const who = (i: Item) => data.members.find((m) => m.user_id === i.created_by) ?? me;
 
@@ -60,7 +66,8 @@ export default function Shopping(ctx: Ctx & { checkout?: boolean }) {
     const at = new Date().toISOString();
     for (const i of cart) {
       const pc = m[i.name] ?? i.price_cents ?? null;
-      patch(i, { archived_at: at, expense_id: expenseId, ...(pc != null ? { price_cents: pc } : {}) });
+      const paid = m[i.name] ?? i.paid_cents ?? null; // só o valor real da linha do talão (ou o «pago» escrito à mão)
+      patch(i, { archived_at: at, expense_id: expenseId, ...(pc != null ? { price_cents: pc } : {}), ...(paid != null ? { paid_cents: paid } : {}) });
       savePref(i.name, pc != null ? { last_price_cents: pc } : {});
     }
     setDone(''); setRc(null); setTotal('');
@@ -87,7 +94,7 @@ export default function Shopping(ctx: Ctx & { checkout?: boolean }) {
           <h3 className="sec-h light">{g.s}<span>{g.items.length}</span></h3>
           {g.items.map((i) => <Row key={i.id} i={i} tone={payerTone(data.members, who(i).id)} by={who(i).display_name} pending={state[i.id]} pop={pop === i.id} open={open === i.id}
             price={i.price_cents ?? pm[keyOf(i.name)]?.last_price_cents ?? null} basic={!!(i.basic || pm[keyOf(i.name)]?.basic)}
-            onOpen={() => setOpen(open === i.id ? null : i.id)} onCheck={() => toggle(i)} onRemove={() => archive(i)}
+            st={stOf(i)} onPaid={(c) => patch(i, { paid_cents: c })} onOpen={() => setOpen(open === i.id ? null : i.id)} onCheck={() => toggle(i)} onRemove={() => archive(i)}
             onQty={(qty, unit) => patch(i, { qty, unit })}
             onSection={(s) => { patch(i, { section: s }); savePref(i.name, { section: s }); }}
             onBasic={(b) => { patch(i, { basic: b }); savePref(i.name, { basic: b }); }}
@@ -98,7 +105,7 @@ export default function Shopping(ctx: Ctx & { checkout?: boolean }) {
       {cart.length > 0 && <section className="sec cart">
         <button className="cart-line" aria-expanded={showCart} onClick={() => setShowCart(!showCart)}><span>✓ {cart.length} {cart.length === 1 ? 'comprado' : 'comprados'}</span><span className="dim small">{showCart ? 'esconder ▾' : 'ver ▸'}</span></button>
         {showCart && cart.map((i) => <Row key={i.id} i={i} tone={payerTone(data.members, who(i).id)} by={who(i).display_name} pending={state[i.id]} pop={false} open={open === i.id} price={i.price_cents ?? pm[keyOf(i.name)]?.last_price_cents ?? null} basic={!!(i.basic || pm[keyOf(i.name)]?.basic)}
-          onOpen={() => setOpen(open === i.id ? null : i.id)} onCheck={() => toggle(i)} onRemove={() => archive(i)} onQty={(qty, unit) => patch(i, { qty, unit })}
+          st={stOf(i)} onPaid={(c) => patch(i, { paid_cents: c })} onOpen={() => setOpen(open === i.id ? null : i.id)} onCheck={() => toggle(i)} onRemove={() => archive(i)} onQty={(qty, unit) => patch(i, { qty, unit })}
           onSection={(s) => { patch(i, { section: s }); savePref(i.name, { section: s }); }} onBasic={(b) => { patch(i, { basic: b }); savePref(i.name, { basic: b }); }} onPrice={(c) => { patch(i, { price_cents: c }); savePref(i.name, { last_price_cents: c }); }} />)}
       </section>}
       {cart.length > 0 && !done && <div className="shop-foot"><button className="pri" onClick={() => setDone('total')}>Fechar compra → lançar despesa</button></div>}
@@ -119,7 +126,7 @@ export default function Shopping(ctx: Ctx & { checkout?: boolean }) {
 }
 
 type RowP = { i: Item; tone: 'pink' | 'blue'; by: string; pending?: string; pop: boolean; open: boolean; price: number | null; basic: boolean;
-  onOpen: () => void; onCheck: () => void; onRemove: () => void; onQty: (q: number | null, u: Unit | null) => void; onSection: (s: string) => void; onBasic: (b: boolean) => void; onPrice: (c: number | null) => void };
+  onOpen: () => void; onCheck: () => void; onRemove: () => void; onQty: (q: number | null, u: Unit | null) => void; onSection: (s: string) => void; onBasic: (b: boolean) => void; onPrice: (c: number | null) => void; st: Stats | null; onPaid: (c: number | null) => void };
 function Row(p: RowP) {
   const { i } = p; const x0 = useRef<number | null>(null); const [dx, setDx] = useState(0); const dragged = useRef(false);
   const unit = (i.unit ?? 'un') as Unit;
@@ -134,7 +141,7 @@ function Row(p: RowP) {
         <button className="it-tap row-btn" role="checkbox" aria-checked={i.bought} aria-label={`${i.name}: ${i.bought ? 'comprado — tocar para voltar à lista' : 'por comprar — tocar para marcar'}`} onClick={() => { if (dragged.current) { dragged.current = false; return; } p.onCheck(); }}>
           <span className="it-l"><span className="ck" aria-hidden="true"><svg viewBox="0 0 24 24" className="icn"><path d="M6 12.5l4 4 8-9" /></svg></span>
           <span className="it-txt"><span className="it-name">{i.name}{p.basic && <em className="tag">básico</em>}</span>
-          <span className="muted small">{[qtyText(i.qty, i.unit), p.price != null ? '≈ ' + eur(p.price) : '', p.by].filter(Boolean).join(' · ')}</span></span></span>
+          <span className="muted small">{[qtyText(i.qty, i.unit), p.st?.avg != null && p.st.base ? `${eur(p.st.avg)}${baseLabel(p.st.base).slice(1)}` : p.price != null ? '≈ ' + eur(p.price) : '', p.by].filter(Boolean).join(' · ')}{p.st?.lastVsAvg != null && Math.abs(p.st.lastVsAvg) >= 5 && <b className={'pv ' + (p.st.lastVsAvg > 0 ? 'bad' : 'ok')}> {p.st.lastVsAvg > 0 ? '▲' : '▼'}{Math.abs(p.st.lastVsAvg)}%</b>}</span></span></span>
         </button>
         <button className="it-dots" onClick={p.onOpen} aria-expanded={p.open} aria-label={`Detalhes de ${i.name}`}>⋯</button>
       </div>
@@ -148,6 +155,8 @@ function Row(p: RowP) {
           <select aria-label="Secção" value={i.section ?? classify(i.name)} onChange={(e) => p.onSection(e.target.value)}>{SECTIONS.map((s) => <option key={s}>{s}</option>)}</select>
           <input aria-label="Preço habitual" inputMode="decimal" placeholder="Preço €" defaultValue={p.price != null ? centsToInput(p.price) : ''} onBlur={(e) => { const c = e.target.value.trim() ? parseCents(e.target.value) : null; if (c !== p.price) p.onPrice(c); }} style={{ width: 96 }} />
         </div>
+        {i.bought && <div className="row"><input aria-label="Pago (linha do talão)" inputMode="decimal" placeholder="Pago € (talão)" defaultValue={i.paid_cents != null ? centsToInput(i.paid_cents) : ''} onBlur={(e) => { const c = e.target.value.trim() ? parseCents(e.target.value) : null; if (c !== (i.paid_cents ?? null)) p.onPaid(c); }} /></div>}
+        <PriceInfo st={p.st} />
         <div className="row between">
           <label className="inline"><input type="checkbox" checked={p.basic} onChange={(e) => p.onBasic(e.target.checked)} /> Básico (repor sempre)</label>
           <button className="act" onClick={p.onRemove}>Retirar</button>
@@ -155,4 +164,25 @@ function Row(p: RowP) {
       </div>}
     </div>
   );
+}
+
+/** Histórico de preços do item (só compras reais com linha do talão). Sem dados → nada. */
+function PriceInfo({ st }: { st: Stats | null }) {
+  if (!st) return null;
+  const u = st.base ? baseLabel(st.base).slice(1) : '';
+  const lastV = st.last.per != null && st.last.base === st.base ? eur(st.last.per) + u : eur(st.last.paid);
+  return (
+    <div className="pinfo small">
+      {st.avg != null && <div className="kv"><span className="muted">média{u ? ` (${baseLabel(st.base!)})` : ''}</span><span className="num"><b>{eur(st.avg)}</b>{st.min != null && st.max != null && st.min !== st.max && <span className="muted"> · {eur(st.min)}–{eur(st.max)}</span>}</span></div>}
+      <div className="kv"><span className="muted">último</span><span className="num">{lastV}{st.lastVsAvg != null && Math.abs(st.lastVsAvg) >= 5 && <b className={st.lastVsAvg > 0 ? 'bad' : 'ok'}> {st.lastVsAvg > 0 ? '▲' : '▼'}{Math.abs(st.lastVsAvg)}%</b>}</span></div>
+      <div className="muted pl">{[st.last.store, st.last.at.split('-').reverse().join('/'), `${st.n} ${st.n === 1 ? 'compra' : 'compras'}`].filter(Boolean).join(' · ')}</div>
+      {st.cheapest && <div className="kv"><span className="muted">mais barato</span><span className="pl-s"><span className="pl">{st.cheapest.store}</span> <span className="num ok">{eur(st.cheapest.avg)}{u}</span></span></div>}
+      {st.series.length >= 3 && <MiniSpark vs={st.series} />}
+    </div>
+  );
+}
+function MiniSpark({ vs }: { vs: number[] }) {
+  const max = Math.max(...vs), min = Math.min(...vs), W = 100, H = 24;
+  const d = vs.map((v, k) => `${k ? 'L' : 'M'}${((k / (vs.length - 1)) * W).toFixed(1)} ${(H - 2 - ((v - min) / Math.max(1, max - min)) * (H - 4)).toFixed(1)}`).join(' ');
+  return <svg className="mspark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Evolução do preço"><path d={d} /></svg>;
 }

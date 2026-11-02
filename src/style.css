@@ -335,3 +335,11 @@ button.link.small, button.act-x { min-height: 44px; }
 button.pri { min-width: 44px; }
 .themes .theme { min-height: 44px; }
 .shop-head.slim { align-items: center; padding: 2px 4px 0; flex-wrap: wrap; min-height: 28px; }
+/* fs-v38 · preços médios na lista (só histórico real). */
+.pv { font-weight: 600; font-size: 12px; }
+.pinfo { margin: 8px 0 2px; padding: 8px 10px; background: var(--card); border-radius: 10px; display: grid; gap: 3px; min-width: 0; }
+.pinfo .kv { flex-wrap: nowrap; align-items: baseline; }
+.pinfo .pl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pinfo .pl-s { display: flex; gap: 4px; min-width: 0; justify-content: flex-end; }
+.mspark { display: block; width: 100%; height: 24px; margin-top: 4px; }
+.mspark path { fill: none; stroke: var(--acc); stroke-width: 2; vector-effect: non-scaling-stroke; }
