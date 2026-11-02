@@ -44,13 +44,14 @@ export function monthLists(members: string[], exps: SettleExpense[], ym: string,
   if (members.length === 2) for (const i of incomes) { if (!inM(i?.date) || !(i.received_by in out)) continue; out[members.find((m) => m !== i.received_by)!] += otherShare(i as never); }
   return out;
 }
+/** Antigo limite por transferência (já não se aplica: o acerto propõe sempre a totalidade). */
 export const MBWAY_MAX = 75000;
 export type CloseCalc = { creditor: string | null; debtor: string | null; diff: number; paid: number; carry: number };
 export function closeOf(lists: Record<string, number>): CloseCalc {
   const ids = Object.keys(lists); if (ids.length < 2) return { creditor: null, debtor: null, diff: 0, paid: 0, carry: 0 };
   const [a, b] = ids; const d = lists[a] - lists[b];
   if (d === 0) return { creditor: null, debtor: null, diff: 0, paid: 0, carry: 0 };
-  const diff = Math.abs(d); const paid = Math.min(diff, MBWAY_MAX);
+  const diff = Math.abs(d); const paid = diff; // totalidade, numa só vez
   return { creditor: d > 0 ? a : b, debtor: d > 0 ? b : a, diff, paid, carry: diff - paid };
 }
 export const monthSettlement = (members: string[], exps: SettleExpense[], ym: string, incomes: SettleIncome[] = []) => closeOf(monthLists(members, exps, ym, incomes));

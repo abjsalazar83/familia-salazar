@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { closeCalc, halvedLists, nextDue, upcoming, termsAt, savings, closeMessage, type Payment } from './plan';
+import { closeCalc, halvedLists, nextDue, upcoming, termsAt, savings, closeMessage, autoPost, type Payment } from './plan';
 const P = (o: Partial<Payment>): Payment => ({ id: 'x', family_id: 'f', name: 'X', amount_cents: 1000, period: 'mensal', next_date: '2026-10-08', payer: null, account: null, note: null, new_amount_cents: null, new_period: null, new_from: null, is_deleted: false, ...o });
 describe('pagamentos', () => {
   it('avança pela periodicidade e muda de preço', () => {
@@ -15,9 +15,9 @@ describe('pagamentos', () => {
   });
 });
 describe('fecho de mês', () => {
-  it('limite MB WAY 750 € e resto para o mês seguinte', () => {
+  it('propõe a totalidade, sem transitar', () => {
     const c = closeCalc({ ana: 150000, ant: 63000 });
-    expect(c).toEqual({ creditor: 'ana', debtor: 'ant', diff: 87000, paid: 75000, carry: 12000 });
+    expect(c).toEqual({ creditor: 'ana', debtor: 'ant', diff: 87000, paid: 87000, carry: 0 });
     expect(closeCalc({ a: 100, b: 100 }).debtor).toBeNull();
   });
   it('listas a metade a partir das despesas', () => {
@@ -27,7 +27,7 @@ describe('fecho de mês', () => {
   });
   it('mensagem', () => {
     const m = closeMessage('2026-10', { a: 'Ana', b: 'António' }, { a: 150000, b: 63000 }, closeCalc({ a: 150000, b: 63000 }), (c) => (c / 100).toFixed(2));
-    expect(m).toContain('António → Ana: 750.00'); expect(m).toContain('novembro');
+    expect(m).toContain('António → Ana: 870.00 por MB WAY'); expect(m).not.toContain('sobram');
   });
 });
 describe('poupança', () => {
@@ -62,5 +62,19 @@ describe('por lançar', () => {
   it('totais', () => {
     const t = monthlyTotals([base, { ...base, id: 'p2', kind: 'pessoal', owner_member: 'a', amount_cents: 3000, period: 'trimestral' }], '2026-10-28');
     expect(t).toEqual({ conjunta: 1000, pessoal: { a: 1000 } });
+  });
+});
+describe('fixos de valor variável', () => {
+  const base = { id: 'agua', family_id: 'f', name: 'Água', amount_cents: 3700, period: 'mensal' as const, next_date: '2026-10-31', payer: null, account: null, note: null, new_amount_cents: null, new_period: null, new_from: null, is_deleted: false, kind: 'conjunta' as const, split: '50/50' as const, owner_member: 'ant', last_posted: null };
+  it('variável fica por confirmar, sem valor, com o último lançado como sugestão', () => {
+    const exps = [{ payment_id: 'agua', payment_due: '2026-10-31', is_deleted: false, amount_cents: 3606 }];
+    const [x] = porLancar([{ ...base, variable: true, next_date: '2026-11-30' }], exps, '2026-11-30');
+    expect(x.amount).toBeNull(); expect(x.hint).toBe(3606); expect(autoPost(x, 'ant')).toBe(false);
+  });
+  it('sem histórico, a sugestão é o valor do modelo; fixo certo do próprio é automático', () => {
+    expect(porLancar([{ ...base, variable: true }], [], '2026-11-01')[0].hint).toBe(3700);
+    expect(porLancar([{ ...base, amount_cents: null, name: 'SAD', variable: true }], [{ description: 'SAD', amount_cents: 4148, date: '2026-10-31', is_deleted: false }], '2026-11-01')[0].hint).toBe(4148);
+    const [y] = porLancar([base], [], '2026-11-01'); expect(y.amount).toBe(3700);
+    expect(autoPost(y, 'ant')).toBe(true); expect(autoPost(y, 'ana')).toBe(false);
   });
 });

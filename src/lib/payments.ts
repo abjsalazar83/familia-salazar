@@ -6,6 +6,8 @@ export type Payment = {
   new_amount_cents: number | null; new_period: Period | null; new_from: string | null; is_deleted: boolean;
   // v7 (opcionais: a app funciona antes da migração)
   kind?: 'conjunta' | 'pessoal'; split?: PaySplit; category?: string; owner_member?: string | null; last_posted?: string | null; expense_id?: string | null;
+  // v16: valor muda todos os meses → fica sempre por confirmar
+  variable?: boolean;
 };
 const STEP: Record<Period, number> = { mensal: 1, bimestral: 2, trimestral: 3, anual: 12 };
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -56,11 +58,23 @@ export function duePosts(p: Payment, today: string, posted: Set<string>, lookbac
 }
 export const addDays = (s: string, n: number) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
 
-export type PostItem = { p: Payment; date: string; amount: number | null };
-export function porLancar(ps: Payment[], exps: { payment_id?: string | null; payment_due?: string | null; is_deleted: boolean }[], today: string): PostItem[] {
+export type PostItem = { p: Payment; date: string; amount: number | null; hint?: number | null };
+type PostedExp = { payment_id?: string | null; payment_due?: string | null; is_deleted: boolean; amount_cents?: number; date?: string; description?: string; review?: string | null };
+/** Sugestão para um fixo variável: o último valor lançado desse pagamento; senão o valor do modelo. */
+export function lastValue(p: Payment, exps: PostedExp[]): number | null {
+  const own = exps.filter((e) => e && !e.is_deleted && e.payment_id === p.id && e.amount_cents != null).sort((a, b) => (b.payment_due ?? b.date ?? '').localeCompare(a.payment_due ?? a.date ?? ''));
+  if (own[0]) return own[0].amount_cents!;
+  // antes de ser lançado pela app: a última despesa com o mesmo nome (ex.: «SAD» de 31/10)
+  const n = p.name.trim().toLowerCase();
+  const same = exps.filter((e) => e && !e.is_deleted && !e.review && e.amount_cents != null && e.description?.trim().toLowerCase() === n).sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+  return same[0]?.amount_cents ?? p.amount_cents;
+}
+/** Fixos de valor certo que este dispositivo lança sozinho: valor conhecido, não variável, e quem paga sou eu. */
+export const autoPost = (x: PostItem, me: string) => !x.p.variable && x.amount != null && x.amount > 0 && x.p.owner_member === me;
+export function porLancar(ps: Payment[], exps: PostedExp[], today: string): PostItem[] {
   if (!hasV7(ps)) return [];
   const posted = new Set(exps.filter((e) => e && !e.is_deleted && e.payment_id).map((e) => e.payment_id + '|' + e.payment_due));
-  return ps.flatMap((p) => duePosts(p, today, posted).map((date) => ({ p, date, amount: termsAt(p, date).amount })))
+  return ps.flatMap((p) => duePosts(p, today, posted).map((date) => p.variable ? { p, date, amount: null, hint: lastValue(p, exps) } : { p, date, amount: termsAt(p, date).amount }))
     .sort((a, b) => a.date.localeCompare(b.date) || a.p.name.localeCompare(b.p.name));
 }
 

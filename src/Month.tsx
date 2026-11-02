@@ -12,7 +12,8 @@ import { eur, ptDate, todayIso } from './lib/money';
 import { type Expense } from './lib/types';
 import { CloseMonth, paymentsOf } from './Plan';
 import { openFrom } from './lib/monthclose';
-import { Inbox } from './Inbox';
+import { DayOne } from './DayOne';
+import { Inbox, useAutoPost } from './Inbox';
 import { VoiceButton } from './Voice';
 import type { VoiceGuess } from './lib/voice';
 import { ReceiptButton, type ReceiptResult } from './Receipt';
@@ -31,10 +32,11 @@ export function Month(p: Ctx & PanelProps) {
   const otherM = data.members.find((m) => m.id !== me); const otherN = otherM?.display_name ?? 'Outro';
   const groups = groupByCategory(list, me); const paid = paidBy(openE.filter((e) => !from || e.date >= from)); const bal = useBalance(data);
   const cc = confirmCount(data.expenses, ym);
-  useAutoIncome(data, mutate);
+  useAutoIncome(data, mutate); useAutoPost(data, paymentsOf(data, p.extra), mutate);
   const im = incomeMonth(data.incomes ?? [], ym);
   return (
     <>
+      <DayOne data={data} closes={[...(data.closes ?? []), ...(p.extra?.closes ?? [])]} open={() => setPanel('fechar')} />
       <BalanceCard data={data} state={p.state} panel={panel} setPanel={setPanel} />
       <Inbox data={data} payments={paymentsOf(data, p.extra)} mutate={mutate} open={panel === 'rever'} toggle={() => setPanel(panel === 'rever' ? '' : 'rever')} />
       {panel === 'saldar' && <SettleForm {...p} close={() => setPanel('')} />}

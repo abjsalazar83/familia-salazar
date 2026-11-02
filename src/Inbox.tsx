@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { IcCheck, IcInbox, IcX } from './Icons';
 import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
 import { inboxItems, type InboxItem } from './lib/inbox';
-import { postExpense, type Payment } from './lib/plan';
+import { autoPost, porLancar, postExpense, type Payment } from './lib/plan';
 import { uuid, type Mutate } from './lib/outbox';
 import type { FamilyData } from './lib/useFamily';
 import { nameOf, payerTone } from './lib/view';
@@ -43,8 +43,8 @@ export function Inbox({ data, payments, mutate, open, toggle }: { data: FamilyDa
       {open && <ul className="list">{items.map((x) => {
         const needsVal = x.kind === 'receita' || x.kind === 'lancar';
         return <li key={x.kind + x.id} className={'li pay-' + payerTone(data.members, who(x))}>
-          <div className="grow"><div>{title(x)}</div><div className="dim small">{LABEL[x.kind]} · {ptDate(date(x))} · {nameOf(data.members, who(x))}{x.kind === 'extrato' && x.e.reason ? ' · ' + x.e.reason : ''}</div></div>
-          {needsVal ? <input className="num amt" inputMode="decimal" aria-label={`Valor de ${title(x)}`} placeholder="valor" value={vals[x.id] ?? (amount(x) != null ? centsToInput(amount(x)!) : '')} onChange={(e) => setVals({ ...vals, [x.id]: e.target.value })} />
+          <div className="grow"><div>{title(x)}</div> <div className="dim small">{x.kind === 'lancar' && x.p.variable ? '− fixa de valor variável' : LABEL[x.kind]} · {ptDate(date(x))} · {nameOf(data.members, who(x))}{x.kind === 'extrato' && x.e.reason ? ' · ' + x.e.reason : ''}</div></div>
+          {needsVal ? <input className="num amt" inputMode="decimal" aria-label={`Valor de ${title(x)}`} placeholder={x.kind === 'lancar' && x.hint != null ? `último ${centsToInput(x.hint)}` : 'valor'} value={vals[x.id] ?? (amount(x) != null ? centsToInput(amount(x)!) : '')} onChange={(e) => setVals({ ...vals, [x.id]: e.target.value })} />
             : <span className="num">{eur(amount(x) ?? 0)}</span>}
           <button className="pri small" aria-label={x.kind === 'lancar' ? 'Lançar' : x.kind === 'receita' ? 'Guardar' : x.kind === 'extrato' ? 'Aceitar' : 'Confirmar'} onClick={() => act(x)}><IcCheck /></button>
           {(x.kind === 'extrato' || x.kind === 'lancar') && <button className="dim small" aria-label={x.kind === 'extrato' ? 'Descartar' : 'Já registado'} onClick={() => dismiss(x)}><IcX /></button>}
@@ -52,4 +52,18 @@ export function Inbox({ data, payments, mutate, open, toggle }: { data: FamilyDa
       {err && <p className="err small" role="alert">{err}</p>}
     </section>
   );
+}
+
+/** Fixos de valor certo: o dispositivo de quem paga lança-os sozinho na data (sem passar pelo aviso). Variáveis ficam por confirmar. */
+export function useAutoPost(data: FamilyData, payments: Payment[], mutate: Mutate) {
+  const me = data.me?.id; const busy = useRef(new Set<string>());
+  useEffect(() => {
+    if (!me) return;
+    for (const x of porLancar(payments, data.expenses as never, todayIso())) {
+      const k = x.p.id + '|' + x.date; if (!autoPost(x, me) || busy.current.has(k)) continue; busy.current.add(k);
+      const id = uuid(); const row = postExpense(x.p, x.date, x.amount!, data.members.map((m) => m.id), me);
+      void mutate(`${x.p.name} lançado (fixo).`, 'expenses', 'create', id, { id, family_id: data.me!.family_id, ...row, is_deleted: false, created_at: new Date().toISOString() })
+        .then((ok) => ok && mutate('Pagamento marcado.', 'payments', 'patch', x.p.id, { last_posted: x.date, expense_id: id }));
+    }
+  }, [me, payments, data.expenses]); // eslint-disable-line
 }
