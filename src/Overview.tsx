@@ -5,6 +5,7 @@ import { eur, todayIso } from './lib/money';
 import { costByCategory, currentPace, fixedVsVariable, ymLabel } from './lib/history';
 import { arcs, monthSplit, topIncreases, vsAvg, yoy } from './lib/stats';
 import { CPI_LATEST, inflationFor, realChange } from './lib/inflation';
+import CatBars from './CatBars';
 import { payerTone } from './lib/view';
 import { hasV7, monthlyEq } from './lib/plan';
 
@@ -70,9 +71,8 @@ export default function Overview({ data, extra }: { data: FamilyData; extra: Ext
         <div className="dim small">IPC {CPI_LATEST.ym.slice(5)}/{CPI_LATEST.ym.slice(0, 4)}: {String(CPI_LATEST.yoy).replace('.', ',')}% homóloga · {String(CPI_LATEST.avg12).replace('.', ',')}% média 12m · fonte {CPI_LATEST.source}, publicado {CPI_LATEST.published.split('-').reverse().join('/')}</div>
       </div>
 
-      {cats.length > 0 && <><h3>categorias · média 12m</h3>
-        <div className="catv fade"><Donut parts={cats.map((c) => ({ v: c.month, k: c.cat }))} />
-          <ul className="legend">{cats.map((c, i) => <li key={c.cat}><i className={'c' + (i % 6)} /><span className="grow">{c.cat}</span><span className="num">{eur(c.month)}</span><span className={'num small ' + tone(c.trend)}>{sg(c.trend)}</span></li>)}</ul></div></>}
+      {cats.length > 0 && <><h3>categorias · média 12m · vs 12m antes</h3>
+        <CatBars rows={cats.map((c) => ({ cat: c.cat, v: c.month, pct: c.trend }))} /></>}
 
       {a12 && fixedSrc.length > 0 && <><h3>fixas vs variáveis</h3>
         <div className="bar2 fade"><i className="fx" style={{ flex: fv.fixed }} /><i className="vr" style={{ flex: Math.max(0, fv.variable) }} /></div>

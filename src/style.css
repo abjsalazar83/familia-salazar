@@ -171,7 +171,7 @@ img, svg, table { max-width: 100%; }
 .act.pri .ic { font-size: 1.35em; font-weight: 500; transform: translateY(-.04em); } /* «+» opticamente centrado */
 .act-x { grid-column: 1 / -1; order: 1; margin: 0; text-align: center; }
 .acts .bar.act-x { height: 4px; }
-.acts .link.act-x { justify-self: center; min-height: 32px; }
+.acts .link.act-x { justify-self: center; min-height: 44px; }
 .eff, .li .num, .grp-h .num { text-align: right; font-variant-numeric: tabular-nums; }
 .eff { min-width: 76px; }
 .grp-t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -272,3 +272,66 @@ img, svg, table { max-width: 100%; }
 .inbox.card .banner { margin-top: 0; }
 .segc.sign button.on:first-child { color: var(--neg, #c0392b); }
 .num.eff.tone-blue b { color: var(--pa); } .num.eff.tone-pink b { color: var(--pn); }
+/* fs-v37 · Resumo e Lista simples, sempre dentro do ecrã (360 px+). */
+.screen, .wrap { min-width: 0; overflow-wrap: anywhere; }
+.cbars { list-style: none; margin: 0; padding: 4px 14px; background: var(--card); border-radius: var(--r); }
+.cbars li { padding: 10px 0; border-bottom: .5px solid var(--line); min-width: 0; }
+.cbars li:last-child { border-bottom: 0; }
+.cb-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 15px; }
+.cb-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cbars .flag .cb-n { color: var(--bad); }
+.cb-v { flex: none; font-weight: 600; }
+.cb-d { flex: none; font-size: 12px; min-width: 3.6em; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cb-bar { height: 8px; border-radius: 4px; background: var(--fill); margin-top: 6px; overflow: hidden; }
+.cb-bar i { display: block; height: 100%; border-radius: 4px; background: var(--acc); animation: fs-grow .5s ease-out both; transform-origin: left; }
+.cb-sub { margin-top: 3px; }
+.rhero { padding: 10px 2px 2px; }
+.rhero .big { font-size: clamp(30px, 10vw, 44px); line-height: 1.1; margin: 2px 0; }
+.rhero .sv { font-size: 17px; font-weight: 600; }
+.mb { display: flex; gap: 6px; align-items: stretch; height: 168px; margin: 14px 0 4px; }
+.mb button { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; padding: 4px 0; background: none; border-radius: 10px; color: var(--text); font-size: 11px; min-height: 44px; }
+.mb button .bv { font-size: 10px; color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mb button .bb { width: 70%; max-width: 40px; border-radius: 6px 6px 3px 3px; background: var(--acc); opacity: .45; min-height: 3px; transition: opacity .2s; }
+.mb button.cur .bb { background: repeating-linear-gradient(135deg, var(--acc) 0 6px, color-mix(in srgb, var(--acc) 70%, transparent) 6px 10px); }
+.mb button[aria-pressed=true] { background: var(--fill); } .mb button[aria-pressed=true] .bb { opacity: 1; }
+.mb button .bl { color: var(--dim); white-space: nowrap; } .mb button[aria-pressed=true] .bl { color: var(--text); font-weight: 600; }
+.mdet { margin: 8px 0; }
+.mais { margin: 22px 0 8px; background: var(--card); border-radius: var(--r); padding: 0 14px; }
+.mais > summary { list-style: none; min-height: 52px; display: flex; align-items: center; justify-content: space-between; font-size: 17px; color: var(--text); font-weight: 600; }
+.mais > summary::-webkit-details-marker { display: none; }
+.mais > summary::after { content: '›'; color: var(--dim); font-size: 22px; transition: transform .2s; }
+.mais[open] > summary::after { transform: rotate(90deg); }
+.mais > .mais-b { padding: 0 0 12px; }
+.mais .list, .mais .cbars, .mais .t { background: var(--bg); }
+.msearch { margin: 6px 0 8px; }
+.legend li { min-width: 0; } .legend .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.catv { grid-template-columns: minmax(72px, 30%) minmax(0, 1fr); }
+.kv { gap: 8px; flex-wrap: wrap; min-width: 0; }
+.seg button, .segc button { min-height: 44px; }
+/* Lista: um campo fixo no topo, toque marca, deslizar retira, rodapé «Fechar compra». */
+.shop-add { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 0; margin: 0; }
+.sec-h.light { font-size: 12px; margin: 16px 4px 2px; }
+.it-tap { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-height: 48px; justify-content: center; }
+.it-tap .it-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.it-tap .small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.it-dots { flex: none; width: 44px; height: 44px; min-height: 44px; padding: 0; background: none !important; color: var(--dim); font-size: 20px; border-radius: 50%; }
+.cart-line { width: 100%; display: flex; justify-content: space-between; align-items: center; min-height: 48px; margin-top: 18px; background: var(--card); color: var(--ok); font-weight: 600; border-radius: var(--r); padding: 0 14px; }
+.cart-line .dim { font-weight: 400; }
+.shop-foot { position: sticky; bottom: calc(76px + max(16px, env(safe-area-inset-bottom))); z-index: 6; padding: 10px 0 0; }
+.shop-foot button { width: 100%; min-height: var(--btn-h); border-radius: var(--r-btn); box-shadow: 0 6px 18px rgba(0,0,0,.18); }
+.it-more .stp2 { display: flex; gap: 8px; align-items: center; }
+.it-more .stp2 button { width: 44px; padding: 0; }
+.it-l { display: flex; align-items: center; gap: 12px; min-width: 0; width: 100%; }
+.it-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.it-txt .it-name, .it-txt .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.it-tap.row-btn { min-height: 48px; }
+/* Alvos de toque ≥ 44 px em todo o lado. */
+.li button:not(.row-btn), button.link, .li button.cf { min-height: 44px; min-width: 44px; }
+.li button.cf { width: 44px; height: 44px; }
+button.li.theme, .row-btn { min-height: 44px; }
+.shop-add .act { min-width: 44px; width: 48px; }
+summary { min-height: 44px; display: flex; align-items: center; }
+button.link.small, button.act-x { min-height: 44px; }
+button.pri { min-width: 44px; }
+.themes .theme { min-height: 44px; }
+.shop-head.slim { align-items: center; padding: 2px 4px 0; flex-wrap: wrap; min-height: 28px; }

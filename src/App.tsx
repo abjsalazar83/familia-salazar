@@ -1,6 +1,6 @@
 import { IcCheck, IcGear, IcSwap } from './Icons';
 import Shopping from './Shopping';
-const APP_V = 'fs-v36';
+const APP_V = 'fs-v37';
 import { settlementEffect, payerTone, nameOf } from './lib/view';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';

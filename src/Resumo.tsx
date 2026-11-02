@@ -13,6 +13,8 @@ import { THEMES, type ThemeId } from './themes';
 import { crossings, usage } from './lib/budget';
 import { disableLock, enableLock, lockAvailable, lockEnabled, shouldLock, unlock } from './lib/lock';
 import Overview from './Overview';
+import CatBars from './CatBars';
+import { catRows, monthBars, pctChange, prevYm } from './lib/resumo';
 import { msg, displayMode, LimitsEdit, Limits, Notes, type Ctx } from './App';
 
 function Bars({ items, avg, height = 120 }: { items: { label: string; v: number; dim?: boolean }[]; avg?: number; height?: number }) {
@@ -73,7 +75,7 @@ export default function History({ data, refetch, online, extra }: { data: Family
   };
   const ms = useMemo(() => (data.months ?? []).filter((m) => m && typeof m.ym === 'string').map((m) => ({ ...m, cats: m.cats ?? {}, total_cents: Number(m.total_cents) || 0 })), [data.months]);
   const [n, setN] = useState(12);
-  const [tab, setTab] = useState<'mes' | 'tend'>('mes');
+  const [sel, setSel] = useState(todayIso().slice(0, 7)); const [mq, setMq] = useState(''); const [mais, setMais] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const a = useMemo(() => averages(ms, n), [ms, n]);
   const cats = useMemo(() => costByCategory(ms, n), [ms, n]);
@@ -95,55 +97,84 @@ export default function History({ data, refetch, online, extra }: { data: Family
   const histFlags = useMemo(() => Object.fromEntries(ms.map((m) => [m.ym, monthFlags(ms, m.ym, Number(m.total_cents) - (noExtra ? Number(m.extra_cents) || 0 : 0), m.cats, { noExtra })])), [ms, noExtra]);
   if (!ms.length) return <p className="dim">sem histórico ainda · corre migration_v3.sql e o seed privado no Supabase</p>;
   const last = [...ms].sort((x, y) => x.ym.localeCompare(y.ym)).slice(-n);
-  const tr = (t: number | null) => t == null ? <span className="dim">—</span> : <span className={t > 0 ? 'bad' : t < 0 ? 'ok' : 'dim'}>{t > 0 ? '↑' : t < 0 ? '↓' : '='}{Math.abs(t)}%</span>;
+  const income = extra.incomes.filter((x) => x.ym === ym).reduce((s, x) => s + x.amount_cents, 0);
+  const bars = monthBars(ms, ym, curT.total);
+  const maxB = Math.max(1, ...bars.map((b) => b.v));
+  const selM = sel === ym ? null : ms.find((m) => m.ym === sel) ?? null;
+  const prevCats = ms.find((m) => m.ym === prevYm(sel))?.cats ?? null;
+  const projBy = Object.fromEntries(pace.cats.map((c) => [c.cat, c]));
+  const catRowsSel = sel === ym
+    ? catRows(curT.cats, null).map((r) => { const c = projBy[r.cat]; const pv = prevCats ? prevCats[r.cat] ?? 0 : null; return { cat: r.cat, v: r.v, pct: pctChange(c?.proj ?? r.v, pv), flag: !!c?.flag, sub: c ? `→ ${eur(c.proj)} ao ritmo atual${pv ? ` · ${ymLabel(prevYm(sel))} ${eur(pv)}` : ''}` : undefined }; })
+    : catRows(selM?.cats ?? {}, prevCats).map((r) => ({ cat: r.cat, v: r.v, pct: r.pct, sub: r.prev ? `${ymLabel(prevYm(sel))} ${eur(r.prev)}` : undefined }));
+  const qq = mq.trim().toLowerCase();
+  const monthsList = [...ms].sort((x, y) => y.ym.localeCompare(x.ym)).filter((m) => !qq || [m.ym, ymLabel(m.ym), rs.r[m.ym] ?? '', m.note ?? '', ...Object.keys(m.cats)].join(' ').toLowerCase().includes(qq)).slice(0, qq ? 999 : n);
   return (
     <>
-      <div className="seg" role="tablist" aria-label="Vista">{([['mes', 'Este mês'], ['tend', 'Tendências']] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'pri' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
-      {tab === 'mes' && <>
-      <Overview data={data} extra={extra} />
-      <Savings data={data} extra={extra} online={online} spent={pace.total.spent} projected={pace.total.proj} />
-      <Limits data={data} />
-      <OffMonth ym={ym} flags={curFlags} extras={curExtras} reason={rs.r[ym] ?? ''} online={online} onSave={(t) => rs.save(ym, t, data.me?.id)} />
-      <h3>este mês · {ymLabel(pace.ym)} · dia {pace.day}/{pace.dim} · vs média {n}m</h3>
-      <p className={pace.total.flag ? 'bad' : ''}><span className="big num">{eur(pace.total.spent)}</span> <span className="dim">até hoje → ritmo </span><span className="num">{eur(pace.total.proj)}</span>{pace.total.avg != null && <span className="dim"> · normal {eur(pace.total.avg)} · </span>}{pace.total.ratio != null && <span className={pace.total.ratio > 1.2 ? 'bad' : pace.total.ratio > 1 ? 'warn' : 'ok'}>{Math.round(pace.total.ratio * 100)}%</span>}</p>
-      {pace.cats.length > 0 ? <table className="t"><tbody>{pace.cats.map((c) => <tr key={c.cat} className={c.flag ? 'bad' : ''}>
-        <td>{c.flag ? '▲ ' : ''}{c.cat}</td><td className="num">{eur(c.spent)}</td><td className="num dim">→{eur(c.proj)}</td><td className="num dim">{c.avg != null ? eur(c.avg) : '—'}</td><td className="num">{c.ratio != null ? <span className={c.ratio > 1.2 ? 'bad' : c.ratio > 1 ? 'warn' : 'ok'}>{Math.round(c.ratio * 100)}%</span> : <span className="dim">novo</span>}</td></tr>)}</tbody></table>
-        : <p className="dim small">ainda sem despesas partilhadas este mês</p>}
-      <p className="dim small">gasto · →projeção ao ritmo atual · normal · % do normal. ▲ = mais de 20% acima do normal.</p>
+      <section className="rhero fade" aria-label="Este mês">
+        <div className="dim small">{ymLabel(ym)} · dia {pace.day}/{pace.dim}</div>
+        <div className="big num">gastámos {eur(curT.total)}</div>
+        <div className="sv">poupança {income ? <span className={income - curT.total >= 0 ? 'ok num' : 'bad num'}>{eur(income - curT.total)}</span> : <span className="dim">— <span className="small">(sem rendimentos)</span></span>}</div>
+        <div className="dim small">ritmo → {eur(pace.total.proj)}{pace.total.avg != null && <> · normal {eur(pace.total.avg)}</>}{pace.total.ratio != null && <> · <span className={pace.total.ratio > 1.2 ? 'bad' : pace.total.ratio > 1 ? 'warn' : 'ok'}>{Math.round(pace.total.ratio * 100)}%</span></>}</div>
+      </section>
 
-      </>}
-      {tab === 'tend' && <>
-      <div className="seg" role="radiogroup" aria-label="Período">{[12, 24, 60].map((k) => <button key={k} role="radio" aria-checked={n === k} className={n === k ? 'pri' : ''} onClick={() => setN(k)}>{k}m</button>)}</div>
-      <h3>histórico · {n} meses</h3>
-      {a && <div className="kpi">
-        <div><span className="big num">{eur(a.total)}</span><span className="dim per">/mês</span></div>
-        <div className="dim small">{eur(a.total * 12)}/ano · {eur(a.noExtra)}/mês sem extraordinários · {ymLabel(a.from)}–{ymLabel(a.to)}</div>
+      <div className="mb" role="group" aria-label="Últimos 6 meses · toca num mês">
+        {bars.map((b) => <button key={b.ym} className={b.current ? 'cur' : ''} aria-pressed={sel === b.ym} aria-label={`${ymLabel(b.ym)}: ${eur(b.v)}`} onClick={() => setSel(b.ym)}>
+          <span className="bv">{eurRound(b.v).replace(/\s?€/, '')}</span>
+          <span className="bb" style={{ height: (b.v / maxB) * 110 + 'px' }} />
+          <span className="bl">{ymLabel(b.ym).split(' ')[0].slice(0, 3)}</span></button>)}
+      </div>
+
+      <h3>categorias · {ymLabel(sel)}{sel === ym ? ' · previsão vs mês anterior' : ' · vs mês anterior'}</h3>
+      <CatBars rows={catRowsSel} empty={sel === ym ? 'ainda sem despesas partilhadas este mês' : 'sem categorias neste mês'} />
+      {selM && <div className="mdet small dim">
+        <div className="kv"><span>total</span><span className="num">{eur(selM.total_cents)}</span></div>
+        {selM.extra_cents > 0 && <div className="kv"><span>dos quais extraordinários</span><span className="num">{eur(selM.extra_cents)}</span></div>}
+        {selM.note && <p>{selM.note}</p>}{rs.r[selM.ym] && <p>razão: {rs.r[selM.ym]}</p>}
+        {histFlags[selM.ym]?.map((f) => <div key={f.what} className="warn">▲ {flagText(f)}</div>)}
       </div>}
-      <Bars height={70} items={last.map((m) => ({ label: ymLabel(m.ym), v: m.total_cents, dim: m.provisional }))} avg={a?.total} />
-      <div className="axis dim small"><span>{ymLabel(last[0].ym)}</span><span>┄ média</span><span>{ymLabel(last[last.length - 1].ym)}</span></div>
-      <label className="check small dim"><input type="checkbox" checked={noExtra} onChange={(e) => setNoExtra(e.target.checked)} /> excluir extraordinárias das médias</label>
-      <h3>quanto custa · €/mês · €/ano · % · vs {n}m antes</h3>
-      <table className="t"><tbody>{cats.map((c) => <tr key={c.cat}>
-        <td>{c.cat}<i style={{ width: (c.month / cats[0].month) * 100 + '%' }} /></td><td className="num">{eur(c.month)}</td><td className="num dim">{eurRound(c.year)}</td><td className="num dim">{c.pct}%</td><td className="num">{tr(c.trend)}</td></tr>)}</tbody></table>
 
-      {tips.length > 0 && <><h3>onde poupar</h3>
-        <ul className="list">{tips.map((t, k) => <li key={k} className="li"><div className="grow"><div>{t.title}</div><div className="dim small">{t.detail}</div></div>
-          {t.saving != null && <span className="num ok">{t.estimate ? '≈ ' : 'até '}{eur(t.saving)}<span className="dim small">/mês</span></span>}</li>)}</ul>
-        <p className="dim small">≈ = estimativa: voltar à média dos {n} meses. «até» = cortar tudo.</p></>}
+      <OffMonth ym={ym} flags={curFlags} extras={curExtras} reason={rs.r[ym] ?? ''} online={online} onSave={(t) => rs.save(ym, t, data.me?.id)} />
+      <Limits data={data} />
 
-      {stores.length > 0 && <><h3>supermercado por loja · 90 dias</h3>
-        <ul className="list">{stores.map(([s, v]) => <li key={s} className="li"><span className="grow">{s}</span><span className="num">{eur(v)}</span></li>)}</ul></>}
+      <details className="mais" open={mais} onToggle={(e) => setMais((e.target as HTMLDetailsElement).open)}>
+        <summary><span>Mais <span className="dim small" style={{ fontWeight: 400 }}>· poupança, dicas, meses</span></span></summary>
+        <div className="mais-b">
+          <Savings data={data} extra={extra} online={online} spent={pace.total.spent} projected={pace.total.proj} />
+          <Overview data={data} extra={extra} />
 
-      {notes.length > 0 && <><h3>notas</h3><Notes notes={notes} /></>}
+          <h3>histórico</h3>
+          <div className="seg" role="radiogroup" aria-label="Período">{[12, 24, 60].map((k) => <button key={k} role="radio" aria-checked={n === k} className={n === k ? 'pri' : ''} onClick={() => setN(k)}>{k}m</button>)}</div>
+          {a && <div className="kpi">
+            <div><span className="big num">{eur(a.total)}</span><span className="dim per">/mês</span></div>
+            <div className="dim small">{eur(a.total * 12)}/ano · {eur(a.noExtra)}/mês sem extraordinários · {ymLabel(a.from)}–{ymLabel(a.to)}</div>
+          </div>}
+          <Bars height={70} items={last.map((m) => ({ label: ymLabel(m.ym), v: m.total_cents, dim: m.provisional }))} avg={a?.total} />
+          <div className="axis dim small"><span>{ymLabel(last[0].ym)}</span><span>┄ média</span><span>{ymLabel(last[last.length - 1].ym)}</span></div>
+          <label className="check small dim"><input type="checkbox" checked={noExtra} onChange={(e) => setNoExtra(e.target.checked)} /> excluir extraordinárias das médias</label>
+          <h3>quanto custa · média {n}m · vs {n}m antes</h3>
+          <CatBars rows={cats.map((c) => ({ cat: c.cat, v: c.month, pct: c.trend, sub: `${eurRound(c.year)}/ano · ${c.pct}% do total` }))} />
 
-      <h3>meses</h3>
-      <ul className="list">{[...ms].sort((x, y) => y.ym.localeCompare(x.ym)).slice(0, n).map((m: HistoryMonth) => (
-        <li key={m.ym} className="li col"><button className="row-btn" aria-expanded={open === m.ym} onClick={() => setOpen(open === m.ym ? null : m.ym)}>
-          <span className="grow">{ymLabel(m.ym)}{m.provisional && <span className="warn"> · em aberto</span>}{histFlags[m.ym]?.length > 0 && <span className="warn"> · ▲</span>}{rs.r[m.ym] && <span className="dim small block">{rs.r[m.ym]}</span>}</span>
-          <span className="num">{eur(m.total_cents)}</span></button>
-          {open === m.ym && <div className="sub dim small">{Object.entries(m.cats).sort((x, y) => y[1] - x[1]).map(([c, v]) => <div key={c} className="kv"><span>{c}</span><span className="num">{eur(v)}</span></div>)}{m.extra_cents > 0 && <div className="kv"><span>dos quais extraordinários</span><span className="num">{eur(m.extra_cents)}</span></div>}{m.note && <p>{m.note}</p>}{histFlags[m.ym]?.map((f) => <div key={f.what} className="warn">▲ {flagText(f)}</div>)}{(histFlags[m.ym]?.length > 0 || rs.r[m.ym]) && !rs.missing && <button className="link" disabled={!online} onClick={() => { const t = prompt(`Razão de ${ymLabel(m.ym)} estar fora do normal:`, rs.r[m.ym] ?? ''); if (t != null) rs.save(m.ym, t, data.me?.id); }}>{rs.r[m.ym] ? 'alterar razão' : 'indicar razão'}</button>}{!m.provisional && <button className="link" disabled={!online || busy} onClick={() => setOpenMonth(m.ym, true)}>reabrir mês</button>}</div>}
-        </li>))}</ul>
-      </>}
+          {tips.length > 0 && <><h3>onde poupar</h3>
+            <ul className="list">{tips.map((t, k) => <li key={k} className="li"><div className="grow"><div>{t.title}</div><div className="dim small">{t.detail}</div></div>
+              {t.saving != null && <span className="num ok">{t.estimate ? '≈ ' : 'até '}{eur(t.saving)}<span className="dim small">/mês</span></span>}</li>)}</ul>
+            <p className="dim small">≈ = estimativa: voltar à média dos {n} meses. «até» = cortar tudo.</p></>}
+
+          {stores.length > 0 && <><h3>supermercado por loja · 90 dias</h3>
+            <ul className="list">{stores.map(([s, v]) => <li key={s} className="li"><span className="grow">{s}</span><span className="num">{eur(v)}</span></li>)}</ul></>}
+
+          {notes.length > 0 && <><h3>notas</h3><Notes notes={notes} /></>}
+
+          <h3>meses fechados</h3>
+          <input className="msearch" type="search" value={mq} onChange={(e) => setMq(e.target.value)} placeholder="Procurar mês, categoria ou razão…" aria-label="Procurar meses" />
+          <ul className="list">{monthsList.map((m: HistoryMonth) => (
+            <li key={m.ym} className="li col"><button className="row-btn" style={{ minHeight: 44 }} aria-expanded={open === m.ym} onClick={() => setOpen(open === m.ym ? null : m.ym)}>
+              <span className="grow">{ymLabel(m.ym)}{m.provisional && <span className="warn"> · em aberto</span>}{histFlags[m.ym]?.length > 0 && <span className="warn"> · ▲</span>}{rs.r[m.ym] && <span className="dim small block">{rs.r[m.ym]}</span>}</span>
+              <span className="num">{eur(m.total_cents)}</span></button>
+              {open === m.ym && <div className="sub dim small">{Object.entries(m.cats).sort((x, y) => y[1] - x[1]).map(([c, v]) => <div key={c} className="kv"><span>{c}</span><span className="num">{eur(v)}</span></div>)}{m.extra_cents > 0 && <div className="kv"><span>dos quais extraordinários</span><span className="num">{eur(m.extra_cents)}</span></div>}{m.note && <p>{m.note}</p>}{histFlags[m.ym]?.map((f) => <div key={f.what} className="warn">▲ {flagText(f)}</div>)}{(histFlags[m.ym]?.length > 0 || rs.r[m.ym]) && !rs.missing && <button className="link" disabled={!online} onClick={() => { const t = prompt(`Razão de ${ymLabel(m.ym)} estar fora do normal:`, rs.r[m.ym] ?? ''); if (t != null) rs.save(m.ym, t, data.me?.id); }}>{rs.r[m.ym] ? 'alterar razão' : 'indicar razão'}</button>}{!m.provisional && <button className="link" disabled={!online || busy} onClick={() => setOpenMonth(m.ym, true)}>reabrir mês</button>}</div>}
+            </li>))}</ul>
+          {!monthsList.length && <p className="dim small">nenhum mês encontrado</p>}
+        </div>
+      </details>
     </>
   );
 }
