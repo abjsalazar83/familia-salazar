@@ -1,6 +1,6 @@
 // Preços de referência da internet (Open Prices / Open Food Facts, dados abertos ODbL).
 // Só sugere: o utilizador escolhe a correspondência certa por item. Sem correspondência → nada.
-export type WebPrice = { id: string; name: string; terms: string; store: string | null; city: string | null; price_cents: number; base: 'kg' | 'L' | 'un' | null; unit_price_cents: number | null; seen_on: string | null; url: string | null };
+export type WebPrice = { id: string; name: string; terms: string; store: string | null; city: string | null; country?: string | null; chain?: 'mercadona' | 'lidl' | null; price_cents: number; base: 'kg' | 'L' | 'un' | null; unit_price_cents: number | null; seen_on: string | null; url: string | null };
 
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 // Português → termos das categorias do Open Food Facts (em inglês) e nomes noutras línguas comuns nas lojas.

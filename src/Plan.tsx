@@ -2,6 +2,7 @@ import { IcX } from './Icons';
 import { confirmCount } from './lib/anomaly';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
+import { idbGet, idbSet } from './lib/idb';
 import type { FamilyData } from './lib/useFamily';
 import { eur, parseCents, centsToInput, todayIso, ptDate } from './lib/money';
 import { CATS } from './lib/types';
@@ -23,9 +24,11 @@ export function useExtra(fid: string | undefined, preset?: Omit<Extra, 'reload'>
       supabase.from('family_settings').select('*').eq('family_id', fid).maybeSingle(),
     ]);
     if (p.error || i.error || c.error) { set((x) => ({ ...x, missing: true })); return; }
-    set({ payments: p.data ?? [], incomes: i.data ?? [], closes: c.data ?? [], settings: st.data ?? null, missing: false });
+    const v = { payments: p.data ?? [], incomes: i.data ?? [], closes: c.data ?? [], settings: st.data ?? null, missing: false };
+    set(v); idbSet('extra:' + fid, v).catch(() => {});
   }, [fid, preset]);
-  useEffect(() => { reload(); }, [reload]);
+  // Arranque: mostra a última cópia (IndexedDB) já; a leitura do servidor é feita pela App depois de cada sincronização (sem pedidos repetidos).
+  useEffect(() => { if (!fid || preset) return; let on = true; idbGet<Omit<Extra, 'reload'>>('extra:' + fid).then((v) => { if (on && v) set((x) => (x.payments.length || x.closes.length ? x : v)); }).catch(() => {}); return () => { on = false; }; }, [fid, preset]);
   return { ...s, reload };
 }
 

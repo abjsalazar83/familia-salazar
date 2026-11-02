@@ -1,6 +1,6 @@
 // Ecrã «Mês»: saldo, aviso «por confirmar», adicionar e uma só lista de movimentos (− despesas, + receitas).
 import { useState } from 'react';
-import { IcList, IcPen, IcPlus } from './Icons';
+import { IcList, IcPen, IcPlus, IcCat } from './Icons';
 import { IncomeForm, IncomeRows, useAutoIncome } from './Incomes';
 import type { SharedIncome } from './lib/income';
 import { incomeMonth } from './lib/income';
@@ -58,7 +58,7 @@ export function Month(p: Ctx & PanelProps) {
         const isOpen = !!q.trim() || !!open[g.category] || (!!p.editing && g.items.some((e) => e.id === p.editing!.id));
         return <section key={g.category} className={'grp' + (isOpen ? ' open' : '')}>
           <button className={'grp-h' + (g.payers.length === 1 ? ' pay-' + payerTone(data.members, g.payers[0]) : ' pay-mix')} aria-expanded={isOpen} onClick={() => setOpen({ ...open, [g.category]: !open[g.category] })}>
-            <span className="chev" aria-hidden>›</span><span className="grow grp-t"><span>{g.category}</span><span className="dim num"><span className="grp-n"> · {g.items.length}</span> · {eur(g.total)}</span></span><Effect c={g.effect} />
+            <span className="chev" aria-hidden>›</span><span className="grow grp-t"><span><span className="cb-i" aria-hidden="true"><IcCat cat={g.category} /></span>{g.category}</span><span className="dim num"><span className="grp-n"> · {g.items.length}</span> · {eur(g.total)}</span></span><Effect c={g.effect} />
           </button>
           <div className="grp-b"><div><ul className="list">{g.items.map((e) => <ExpenseRow key={e.id} e={e} ms={data.members} s={p.state[e.id]} me={me} onConfirm={confirmE} onEdit={() => p.openExpense(e)} />)}</ul></div></div>
         </section>; })}

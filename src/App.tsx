@@ -1,6 +1,5 @@
-import { IcCheck, IcGear, IcSwap } from './Icons';
-import Shopping from './Shopping';
-const APP_V = 'fs-v39';
+import { IcCheck, IcGear, IcSwap, IcCalendar, IcCart, IcRepeat, IcChart } from './Icons';
+const APP_V = 'fs-v40';
 import { settlementEffect, payerTone, nameOf } from './lib/view';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -24,6 +23,10 @@ import { Bills } from './Fixas';
 const History = lazy(() => import('./Resumo'));
 import InstallSheet, { markSaved } from './Install';
 const Settings = lazy(() => import('./Defs'));
+// Compras em chunk próprio (com a comparação Mercadona × Lidl); pré-carregado quando o browser está livre → mudar de separador continua instantâneo.
+const loadShopping = () => import('./Shopping');
+const Shopping = lazy(loadShopping);
+if (typeof window !== 'undefined') { const idle = (window as any).requestIdleCallback ?? ((f: () => void) => setTimeout(f, 1500)); idle(() => { loadShopping().catch(() => {}); }); }
 
 export type Tab = 'mes' | 'compras' | 'fixas' | 'resumo' | 'defs';
 type Toast = { kind: 'ok' | 'bad' | 'busy'; text: string } | null;
@@ -141,7 +144,9 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
   const { data, state, queue, status, error, syncedAt, live, syncing, refetch, mutate: qMutate, retry, discard } = useFamily(session);
   const [tab, setTab] = useState<Tab>('mes');
   const extra = useExtra(data.family?.id);
-  useEffect(() => { if (syncedAt) extra.reload(); }, [syncedAt]); // eslint-disable-line
+  // Só depois de uma leitura real do servidor (não da cópia local) e no máximo uma vez por segundo.
+  const lastX = useRef(0);
+  useEffect(() => { if (!syncedAt || status !== 'ready' || !navigator.onLine || Date.now() - syncedAt.getTime() > 5000) return; const now = Date.now(); if (now - lastX.current < 1000) return; lastX.current = now; extra.reload(); }, [syncedAt, status, extra.reload]); // eslint-disable-line
   const mainRef = useRef<HTMLElement>(null);
   const [swipeDir, setSwipeDir] = useState('');
   const tabRef = useRef(tab); tabRef.current = tab;
@@ -226,14 +231,14 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
           <button className="danger" onClick={() => { if (confirm('Descartar esta alteração local? Não foi guardada no servidor.')) discard(o.opId); }}>Descartar</button></li>)}</ul></div>}
       <main ref={mainRef} key={tab} className={'screen ' + swipeDir}>
         {tab === 'mes' && <Month {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} goList={() => { setCheckout(true); setSwipeDir(''); setTab('compras'); setPanel(''); }} />}
-        {tab === 'compras' && <Shopping {...ctx} checkout={checkout} />}
+        {tab === 'compras' && <Suspense fallback={<p className="dim">A carregar…</p>}><Shopping {...ctx} checkout={checkout} /></Suspense>}
         {tab === 'fixas' && <Bills {...ctx} />}
         <Suspense fallback={<p className="dim">A carregar…</p>}>{tab === 'resumo' && <History data={data} refetch={refetch} online={online} extra={extra} />}
         {tab === 'defs' && <><Settings {...ctx} theme={theme} setTheme={setTheme} /><p className="small dim" style={{ textAlign: 'center' }}>versão {APP_V}</p></>}</Suspense>
       </main>
       <nav className="tabs" aria-label="Navegação">
-        {([['mes', 'mês'], ['compras', 'compras'], ['fixas', 'fixas'], ['resumo', 'resumo']] as [Tab, string][]).map(([k, l]) => (
-          <button key={k} aria-current={tab === k ? 'page' : undefined} className={tab === k ? 'pri' : ''} onClick={() => { setSwipeDir(''); setTab(k); setPanel(''); setCheckout(false); }}>{l}</button>))}
+        {([['mes', 'mês', <IcCalendar />], ['compras', 'compras', <IcCart />], ['fixas', 'fixas', <IcRepeat />], ['resumo', 'resumo', <IcChart />]] as [Tab, string, ReactNode][]).map(([k, l, ic]) => (
+          <button key={k} aria-current={tab === k ? 'page' : undefined} className={tab === k ? 'pri' : ''} onClick={() => { setSwipeDir(''); setTab(k); setPanel(''); setCheckout(false); }}><span className="tab-i" aria-hidden="true">{ic}</span>{l}</button>))}
       </nav>
     </>
   );

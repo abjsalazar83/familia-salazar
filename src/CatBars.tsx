@@ -1,5 +1,6 @@
 // Uma barra horizontal por categoria, ordenadas por valor, com a variação face ao mês anterior (▲/▼ %).
 import { eur } from './lib/money';
+import { IcCat } from './Icons';
 
 export type CatBar = { cat: string; v: number; pct: number | null; sub?: string; flag?: boolean };
 
@@ -15,7 +16,7 @@ export default function CatBars({ rows, empty = 'sem despesas' }: { rows: CatBar
   return (
     <ul className="cbars">
       {rows.map((r) => <li key={r.cat} className={r.flag ? 'flag' : ''}>
-        <div className="cb-top"><span className="cb-n">{r.flag ? '▲ ' : ''}{r.cat}</span><span className="num cb-v">{eur(r.v)}</span><Delta pct={r.pct} /></div>
+        <div className="cb-top"><span className="cb-n"><span className="cb-i" aria-hidden="true"><IcCat cat={r.cat} /></span>{r.flag ? '▲ ' : ''}{r.cat}</span><span className="num cb-v">{eur(r.v)}</span><Delta pct={r.pct} /></div>
         <div className="cb-bar" aria-hidden="true"><i style={{ width: Math.max(2, (r.v / max) * 100) + '%' }} /></div>
         {r.sub && <div className="dim small cb-sub">{r.sub}</div>}
       </li>)}

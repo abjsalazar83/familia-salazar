@@ -14,9 +14,13 @@ import { webMatches, webShown, when, type WebPrice } from './lib/webprice';
 import { ReceiptReview, type Pick } from './ReceiptReview';
 import { VoiceButton, voiceSupported } from './Voice';
 import { ReceiptButton, type ReceiptResult } from './Receipt';
-import { IcPlus } from './Icons';
+import { IcPlus, IcDots, IcArchive, IcRefill, IcReceipt, IcX, IcCheck, IcChevron, IcBasket } from './Icons';
+import { idbGet, idbSet } from './lib/idb';
+import { quotes, cheaper, basket, CHAINS, CHAIN_NAME, type Chain, type PBase, type Quote, type Shelf } from './lib/compare';
+import { Compare, CompareEdit } from './Compare';
 import type { VoiceGuess } from './lib/voice';
 
+const NOWEB = { mercadona: [], lidl: [] } as Record<Chain, WebPrice[]>;
 export default function Shopping(ctx: Ctx & { checkout?: boolean }) {
   const { data, mutate, state } = ctx; const me = data.me!;
   const prefs = data.prefs ?? [];
@@ -31,12 +35,29 @@ export default function Shopping(ctx: Ctx & { checkout?: boolean }) {
   const [rl, setRl] = useState<{ lines: RLine[]; pick: Pick } | null>(null);
   // Preços da internet (Open Prices, dados abertos). A Edge Function atualiza a cache no máximo 1×/dia.
   const [web, setWeb] = useState<WebPrice[]>([]);
-  useEffect(() => { let on = true;
-    const load = () => supabase.from('web_prices').select('id,name,terms,store,city,price_cents,base,unit_price_cents,seen_on,url').order('seen_on', { ascending: false }).limit(3000).then(({ data: d }: any) => { if (on && Array.isArray(d)) setWeb(d); });
-    load(); const day = new Date().toISOString().slice(0, 10);
-    if (localStorage.getItem('fs-web-day') !== day) { localStorage.setItem('fs-web-day', day); supabase.functions?.invoke('web-prices', { body: {} }).then((r: any) => { if (r?.data && r.data.fresh === false) load(); }).catch(() => {}); }
+  // Cópia local (IndexedDB) mostrada já; leitura do servidor no máximo 1×/hora (stale-while-revalidate). Só Portugal.
+  useEffect(() => { let on = true; const K = 'web:pt:v40';
+    idbGet<{ at: number; rows: WebPrice[] }>(K).then((c) => { if (on && c && Array.isArray(c.rows)) setWeb((w) => (w.length ? w : c.rows)); return c; }).catch(() => undefined).then((c) => {
+      const load = () => supabase.from('web_prices').select('id,name,terms,store,city,country,chain,price_cents,base,unit_price_cents,seen_on,url').eq('country', 'PT').order('seen_on', { ascending: false }).limit(3000)
+        .then(({ data: d }: any) => { if (on && Array.isArray(d)) { setWeb(d); idbSet(K, { at: Date.now(), rows: d }).catch(() => {}); } });
+      if (!c || Date.now() - c.at > 3600e3) load();
+      const day = new Date().toISOString().slice(0, 10);
+      if (localStorage.getItem('fs-web-day40') !== day) { localStorage.setItem('fs-web-day40', day); supabase.functions?.invoke('web-prices', { body: {} }).then((r: any) => { if (r?.data && r.data.fresh === false) load(); }).catch(() => {}); }
+    });
     return () => { on = false; }; }, []);
+  // Preços de prateleira (Mercadona/Lidl): os do servidor + os acabados de gravar (otimista, aparecem logo).
+  const [mine, setMine] = useState<Shelf[]>([]);
+  const shelfAll = useMemo(() => { const ids = new Set((data.shelf ?? []).map((x) => x.id)); return (data.shelf ?? []).concat(mine.filter((x) => !ids.has(x.id))); }, [data.shelf, mine]);
+  const shelfBy = useMemo(() => { const o: Record<string, Shelf[]> = {}; for (const x of shelfAll) (o[x.key] ??= []).push(x); return o; }, [shelfAll]);
+  const addShelf = async (name: string, chain: Chain, cents: number, base: PBase | null, web?: WebPrice) => {
+    const row: Shelf = { id: uuid(), key: keyOf(name), chain, source: web ? 'web' : 'manual', web_id: web?.id ?? null, price_cents: cents, base, seen_on: web?.seen_on ?? new Date().toISOString().slice(0, 10), created_at: new Date().toISOString() };
+    setMine((m) => [...m, row]);
+    const { error } = await supabase.from('shelf_prices').insert({ ...row, family_id: me.family_id });
+    if (error) { setMine((m) => m.filter((x) => x.id !== row.id)); ctx.setToast({ kind: 'bad', text: 'Preço não gravado: ' + (error.message || 'erro') }); }
+    else ctx.setToast({ kind: 'ok', text: `${CHAIN_NAME[chain]}: ${eur(cents)}${base ? '/' + base : ''} guardado.` });
+  };
   const webOf = (i: Item) => { const ms = webMatches(i.name, web); const ref = pm[keyOf(i.name)]?.web_ref; const chosen = ref ? web.find((w) => w.id === ref) ?? null : null; return { ms: chosen && !ms.some((m) => m.id === chosen.id) ? [chosen, ...ms].slice(0, 3) : ms, chosen }; };
+  const chainWeb = (i: Item) => Object.fromEntries(CHAINS.map((c) => [c, webMatches(i.name, web.filter((w) => w.chain === c), 3)])) as Record<Chain, WebPrice[]>;
   const inList = useMemo(() => new Set(live.map((i) => keyOf(i.name))), [live]);
   const sugg = suggest(prefs, q, inList);
   const secOf = (i: Item) => i.section ?? classify(i.name, learned);
@@ -44,6 +65,8 @@ export default function Shopping(ctx: Ctx & { checkout?: boolean }) {
   const prices = useMemo(() => Object.fromEntries(prefs.map((p) => [p.key, p.last_price_cents])), [prefs]);
   const hist = useMemo(() => purchases(data.items, data.expenses), [data.items, data.expenses]);
   const stOf = (i: Item) => stats(hist[keyOf(i.name)]);
+  const qMap = useMemo(() => { const o: Record<string, Record<Chain, Quote | null>> = {}; for (const i of live) { const k = keyOf(i.name); o[i.id] = quotes(i.name, hist[k], shelfBy[k] ?? [], web); } return o; }, [data.items, hist, shelfBy, web]); // eslint-disable-line
+  const bk = basket(todo.concat(cart).map((i) => ({ q: qMap[i.id], qty: i.qty, unit: i.unit })));
   // Cesto: média paga (€/kg, €/L, €/un × quantidade) quando há histórico; senão o preço habitual.
   const est = (() => { let total = 0, known = 0; const rest: Item[] = [];
     for (const i of todo.concat(cart)) { const e = expected(stOf(i), i.qty, i.unit); if (e != null) { total += e; known++; } else rest.push(i); }
@@ -104,8 +127,14 @@ export default function Shopping(ctx: Ctx & { checkout?: boolean }) {
       </form>
       <div className="shop-head slim fade">
         <span className="muted small">{todo.length} por comprar{cart.length ? ` · ${cart.length} comprados` : ''}{est.known ? <> · cesto <b className="num">≈ {eur(est.total)}</b></> : ''}{est.known && est.missing ? ` · ${est.missing} sem preço` : ''}</span>
-        {missingBasics.length > 0 && <button className="act" onClick={repor}>Repor básicos ({missingBasics.length})</button>}
+        {missingBasics.length > 0 && <button className="act" onClick={repor}><span className="ic"><IcRefill /></span>Repor básicos ({missingBasics.length})</button>}
       </div>
+      {live.length > 0 && <div className="cesto fade" aria-label="Cesto por loja">
+        <span className="ce-h"><IcBasket /> cesto</span>
+        {bk.n ? CHAINS.map((c) => <span key={c} className={'ce-s ch-' + c + (bk[c] < bk[c === 'lidl' ? 'mercadona' : 'lidl'] ? ' win' : '')}><b>{CHAIN_NAME[c]}</b> <span className="num">{eur(bk[c])}</span></span>)
+          : <span className="muted small">sem itens com preço nas duas lojas</span>}
+        {bk.n > 0 && <span className="muted small ce-n">{bk.n} de {bk.of} itens com preço nas duas · sem quantidade conta 1 kg/L/un de cada</span>}
+      </div>}
 
       {sugg.length > 0 && <div className="chips fade">{sugg.map((p) => <button key={p.key} className="chip" onClick={() => add(p.name)}>{p.name}</button>)}</div>}
 
@@ -115,7 +144,7 @@ export default function Shopping(ctx: Ctx & { checkout?: boolean }) {
           <h3 className="sec-h light">{g.s}<span>{g.items.length}</span></h3>
           {g.items.map((i) => <Row key={i.id} i={i} tone={payerTone(data.members, who(i).id)} by={who(i).display_name} pending={state[i.id]} pop={pop === i.id} open={open === i.id}
             price={i.price_cents ?? pm[keyOf(i.name)]?.last_price_cents ?? null} basic={!!(i.basic || pm[keyOf(i.name)]?.basic)}
-            web={webOf(i)} onWeb={(id) => savePref(i.name, { web_ref: id })} st={stOf(i)} onPaid={(c) => patch(i, { paid_cents: c })} onOpen={() => setOpen(open === i.id ? null : i.id)} onCheck={() => toggle(i)} onRemove={() => archive(i)}
+            web={webOf(i)} q={qMap[i.id]} chainWeb={open === i.id ? chainWeb(i) : NOWEB} onShelf={(c, cents, base, w) => addShelf(i.name, c, cents, base, w)} onWeb={(id) => savePref(i.name, { web_ref: id })} st={stOf(i)} onPaid={(c) => patch(i, { paid_cents: c })} onOpen={() => setOpen(open === i.id ? null : i.id)} onCheck={() => toggle(i)} onRemove={() => archive(i)}
             onQty={(qty, unit) => patch(i, { qty, unit })}
             onSection={(s) => { patch(i, { section: s }); savePref(i.name, { section: s }); }}
             onBasic={(b) => { patch(i, { basic: b }); savePref(i.name, { basic: b }); }}
@@ -124,12 +153,12 @@ export default function Shopping(ctx: Ctx & { checkout?: boolean }) {
       ))}
 
       {cart.length > 0 && <section className="sec cart">
-        <button className="cart-line" aria-expanded={showCart} onClick={() => setShowCart(!showCart)}><span>✓ {cart.length} {cart.length === 1 ? 'comprado' : 'comprados'}</span><span className="dim small">{showCart ? 'esconder ▾' : 'ver ▸'}</span></button>
+        <button className="cart-line" aria-expanded={showCart} onClick={() => setShowCart(!showCart)}><span><span className="ic"><IcCheck /></span>{cart.length} {cart.length === 1 ? 'comprado' : 'comprados'}</span><span className="dim small">{showCart ? 'esconder' : 'ver'} <IcChevron open={showCart} /></span></button>
         {showCart && cart.map((i) => <Row key={i.id} i={i} tone={payerTone(data.members, who(i).id)} by={who(i).display_name} pending={state[i.id]} pop={false} open={open === i.id} price={i.price_cents ?? pm[keyOf(i.name)]?.last_price_cents ?? null} basic={!!(i.basic || pm[keyOf(i.name)]?.basic)}
-          web={webOf(i)} onWeb={(id) => savePref(i.name, { web_ref: id })} st={stOf(i)} onPaid={(c) => patch(i, { paid_cents: c })} onOpen={() => setOpen(open === i.id ? null : i.id)} onCheck={() => toggle(i)} onRemove={() => archive(i)} onQty={(qty, unit) => patch(i, { qty, unit })}
+          web={webOf(i)} q={qMap[i.id]} chainWeb={open === i.id ? chainWeb(i) : NOWEB} onShelf={(c, cents, base, w) => addShelf(i.name, c, cents, base, w)} onWeb={(id) => savePref(i.name, { web_ref: id })} st={stOf(i)} onPaid={(c) => patch(i, { paid_cents: c })} onOpen={() => setOpen(open === i.id ? null : i.id)} onCheck={() => toggle(i)} onRemove={() => archive(i)} onQty={(qty, unit) => patch(i, { qty, unit })}
           onSection={(s) => { patch(i, { section: s }); savePref(i.name, { section: s }); }} onBasic={(b) => { patch(i, { basic: b }); savePref(i.name, { basic: b }); }} onPrice={(c) => { patch(i, { price_cents: c }); savePref(i.name, { last_price_cents: c }); }} />)}
       </section>}
-      {cart.length > 0 && !done && <div className="shop-foot"><button className="pri" onClick={() => setDone('total')}>Fechar compra → lançar despesa</button></div>}
+      {cart.length > 0 && !done && <div className="shop-foot"><button className="pri" onClick={() => setDone('total')}><span className="ic"><IcReceipt /></span>Fechar compra → lançar despesa</button></div>}
 
       {done === 'total' && <div className="form sheet">
         <h3>Fechar compra</h3>
@@ -138,7 +167,7 @@ export default function Shopping(ctx: Ctx & { checkout?: boolean }) {
         <div className="acts">
           <ReceiptButton label="Ler talão" onResult={(r) => { setRc(r); const lines = r.text ? parseLines(r.text) : []; if (lines.length) { setRl({ lines, pick: matchLines(lines, cart) }); setDone('review'); } else { setRl(null); setDone('form'); } }} />
           <button className="act pri" disabled={!parseCents(total)} onClick={() => setDone('form')}>Continuar</button>
-          <button className="act act-x" onClick={() => setDone('')}>Cancelar</button>
+          <button className="act act-x" onClick={() => setDone('')}><span className="ic"><IcX /></span>Cancelar</button>
         </div>
       </div>}
       {done === 'review' && rl && <ReceiptReview lines={rl.lines} items={cart} initial={rl.pick} onConfirm={(pick) => { setRl({ ...rl, pick }); setDone('form'); }} onSkip={() => { setRl(null); setDone('form'); }} />}
@@ -148,7 +177,7 @@ export default function Shopping(ctx: Ctx & { checkout?: boolean }) {
 }
 
 type RowP = { i: Item; tone: 'pink' | 'blue'; by: string; pending?: string; pop: boolean; open: boolean; price: number | null; basic: boolean;
-  onOpen: () => void; onCheck: () => void; onRemove: () => void; onQty: (q: number | null, u: Unit | null) => void; onSection: (s: string) => void; onBasic: (b: boolean) => void; onPrice: (c: number | null) => void; st: Stats | null; onPaid: (c: number | null) => void; web: { ms: WebPrice[]; chosen: WebPrice | null }; onWeb: (id: string | null) => void };
+  onOpen: () => void; onCheck: () => void; onRemove: () => void; onQty: (q: number | null, u: Unit | null) => void; onSection: (s: string) => void; onBasic: (b: boolean) => void; onPrice: (c: number | null) => void; q: Record<Chain, Quote | null>; chainWeb: Record<Chain, WebPrice[]>; onShelf: (c: Chain, cents: number, base: PBase | null, w?: WebPrice) => void; st: Stats | null; onPaid: (c: number | null) => void; web: { ms: WebPrice[]; chosen: WebPrice | null }; onWeb: (id: string | null) => void };
 function Row(p: RowP) {
   const { i } = p; const x0 = useRef<number | null>(null); const [dx, setDx] = useState(0); const dragged = useRef(false);
   const unit = (i.unit ?? 'un') as Unit;
@@ -163,9 +192,10 @@ function Row(p: RowP) {
         <button className="it-tap row-btn" role="checkbox" aria-checked={i.bought} aria-label={`${i.name}: ${i.bought ? 'comprado — tocar para voltar à lista' : 'por comprar — tocar para marcar'}`} onClick={() => { if (dragged.current) { dragged.current = false; return; } p.onCheck(); }}>
           <span className="it-l"><span className="ck" aria-hidden="true"><svg viewBox="0 0 24 24" className="icn"><path d="M6 12.5l4 4 8-9" /></svg></span>
           <span className="it-txt"><span className="it-name">{i.name}{p.basic && <em className="tag">básico</em>}</span>
-          <span className="muted small">{[qtyText(i.qty, i.unit), p.web.chosen ? `web ${fmtWeb(p.web.chosen)}` : '', p.st?.avg != null && p.st.base ? `vocês ${eur(p.st.avg)}${baseLabel(p.st.base).slice(1)}` : p.price != null ? '≈ ' + eur(p.price) : '', p.by].filter(Boolean).join(' · ')}{p.st?.lastVsAvg != null && Math.abs(p.st.lastVsAvg) >= 5 && <b className={'pv ' + (p.st.lastVsAvg > 0 ? 'bad' : 'ok')}> {p.st.lastVsAvg > 0 ? '▲' : '▼'}{Math.abs(p.st.lastVsAvg)}%</b>}</span></span></span>
+          <span className="muted small">{[qtyText(i.qty, i.unit), p.web.chosen ? `web ${fmtWeb(p.web.chosen)}` : '', p.st?.avg != null && p.st.base ? `vocês ${eur(p.st.avg)}${baseLabel(p.st.base).slice(1)}` : p.price != null ? '≈ ' + eur(p.price) : '', p.by].filter(Boolean).join(' · ')}{p.st?.lastVsAvg != null && Math.abs(p.st.lastVsAvg) >= 5 && <b className={'pv ' + (p.st.lastVsAvg > 0 ? 'bad' : 'ok')}> {p.st.lastVsAvg > 0 ? '▲' : '▼'}{Math.abs(p.st.lastVsAvg)}%</b>}</span>
+          <Compare q={p.q} win={cheaper(p.q)} /></span></span>
         </button>
-        <button className="it-dots" onClick={p.onOpen} aria-expanded={p.open} aria-label={`Detalhes de ${i.name}`}>⋯</button>
+        <button className="it-dots" onClick={p.onOpen} aria-expanded={p.open} aria-label={`Detalhes de ${i.name}`}><IcDots /></button>
       </div>
       {p.open && <div className="it-more fade">
         <div className="stp2"><span className="muted small">Quantidade</span>
@@ -178,11 +208,12 @@ function Row(p: RowP) {
           <input aria-label="Preço habitual" inputMode="decimal" placeholder="Preço €" defaultValue={p.price != null ? centsToInput(p.price) : ''} onBlur={(e) => { const c = e.target.value.trim() ? parseCents(e.target.value) : null; if (c !== p.price) p.onPrice(c); }} style={{ width: 96 }} />
         </div>
         {i.bought && <div className="row"><input aria-label="Pago (linha do talão)" inputMode="decimal" placeholder="Pago € (talão)" defaultValue={i.paid_cents != null ? centsToInput(i.paid_cents) : ''} onBlur={(e) => { const c = e.target.value.trim() ? parseCents(e.target.value) : null; if (c !== (i.paid_cents ?? null)) p.onPaid(c); }} /></div>}
+        <CompareEdit q={p.q} web={p.chainWeb} onSave={p.onShelf} />
         <PriceInfo st={p.st} />
         <WebInfo {...p.web} onPick={p.onWeb} />
         <div className="row between">
           <label className="inline"><input type="checkbox" checked={p.basic} onChange={(e) => p.onBasic(e.target.checked)} /> Básico (repor sempre)</label>
-          <button className="act" onClick={p.onRemove}>Retirar</button>
+          <button className="act" onClick={p.onRemove}><span className="ic"><IcArchive /></span>Retirar</button>
         </div>
       </div>}
     </div>

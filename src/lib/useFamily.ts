@@ -6,9 +6,10 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import type { Bill, Budget, Expense, Family, HistoryMonth, Item, Member, Note, Settlement } from './types';
 import { idbGet, idbSet } from './idb';
+import type { Shelf } from './compare';
 import { applyOps, classify, discardOp, enqueue, flush, mergeAfterFlush, retryOp, type ExecResult, type Op, type Snapshot, type Table } from './outbox';
 
-export type FamilyData = { family: Family | null; me: Member | null; members: Member[]; expenses: Expense[]; settlements: Settlement[]; items: Item[]; notes: Note[]; months: HistoryMonth[]; bills: Bill[]; budgets: Budget[]; prefs?: Pref[]; incomes: SharedIncome[]; incomeRules: IncomeRule[]; review?: Expense[]; closes?: MonthClose[]; payments?: Payment[] };
+export type FamilyData = { family: Family | null; me: Member | null; members: Member[]; expenses: Expense[]; settlements: Settlement[]; items: Item[]; notes: Note[]; months: HistoryMonth[]; bills: Bill[]; budgets: Budget[]; prefs?: Pref[]; incomes: SharedIncome[]; incomeRules: IncomeRule[]; review?: Expense[]; closes?: MonthClose[]; payments?: Payment[]; shelf?: Shelf[] };
 const EMPTY: FamilyData = { family: null, me: null, members: [], expenses: [], settlements: [], items: [], notes: [], months: [], bills: [], budgets: [], incomes: [], incomeRules: [] };
 type Cache = { data: FamilyData; syncedAt: string };
 
@@ -62,7 +63,7 @@ export function useFamily(session: Session | null) {
       let next = EMPTY;
       if (me) {
         const fid = me.family_id;
-        const [f, m, e, s, i, n, h, b, bu, sp, si, ir, mc, py] = await Promise.all([
+        const [f, m, e, s, i, n, h, b, bu, sp, si, ir, mc, py, sh] = await Promise.all([
           supabase.from('families').select('id,name,invite_code').eq('id', fid).single(),
           supabase.from('family_members').select('*').eq('family_id', fid).order('created_at'),
           supabase.from('expenses').select('*').eq('family_id', fid).order('date', { ascending: false }).order('created_at', { ascending: false }),
@@ -77,11 +78,12 @@ export function useFamily(session: Session | null) {
           supabase.from('income_rules').select('*').eq('family_id', fid).eq('is_deleted', false).order('created_at'),
           supabase.from('month_closes').select('*').eq('family_id', fid).order('ym'),
           supabase.from('payments').select('*').eq('family_id', fid),
+          supabase.from('shelf_prices').select('id,key,chain,source,web_id,price_cents,base,seen_on,created_at').eq('family_id', fid).order('created_at', { ascending: false }).limit(2000),
         ]);
         for (const r of [f, m, e, s, i, n]) if (r.error) throw r.error;
         // Antes de correr migration_v3.sql estas tabelas não existem: a app continua a funcionar sem histórico.
         const opt = <T,>(r: { data: T[] | null; error: unknown }) => (r.error ? [] : r.data ?? []);
-        next = { family: f.data, me, members: m.data!, expenses: e.data!, settlements: s.data!, items: i.data!, notes: n.data!, months: opt<HistoryMonth>(h), bills: opt<Bill>(b), budgets: opt<Budget>(bu), prefs: opt<Pref>(sp), incomes: opt<SharedIncome>(si), incomeRules: opt<IncomeRule>(ir), closes: opt<MonthClose>(mc), payments: py.error ? undefined : (py.data as Payment[]) };
+        next = { family: f.data, me, members: m.data!, expenses: e.data!, settlements: s.data!, items: i.data!, notes: n.data!, months: opt<HistoryMonth>(h), bills: opt<Bill>(b), budgets: opt<Budget>(bu), prefs: opt<Pref>(sp), incomes: opt<SharedIncome>(si), incomeRules: opt<IncomeRule>(ir), closes: opt<MonthClose>(mc), payments: py.error ? undefined : (py.data as Payment[]), shelf: opt<Shelf>(sh) };
       }
       const at = new Date();
       setServer(next); setStatus('ready'); setError(''); setSyncedAt(at);
@@ -133,13 +135,15 @@ export function useFamily(session: Session | null) {
   useEffect(() => {
     if (!fid) return;
     const ch = supabase.channel('familia-' + fid);
-    for (const t of ['expenses', 'settlements', 'shopping_items', 'family_members', 'history_notes', 'history_months', 'recurring_bills', 'budgets', 'shopping_prefs', 'shared_incomes', 'income_rules', 'month_closes', 'payments'])
-      ch.on('postgres_changes', { event: '*', schema: 'public', table: t, filter: `family_id=eq.${fid}` }, () => refetch());
+    let deb: ReturnType<typeof setTimeout> | undefined;
+    const soon = () => { clearTimeout(deb); deb = setTimeout(() => refetch(), 400); };
+    for (const t of ['expenses', 'settlements', 'shopping_items', 'family_members', 'history_notes', 'history_months', 'recurring_bills', 'budgets', 'shopping_prefs', 'shared_incomes', 'income_rules', 'month_closes', 'payments', 'shelf_prices'])
+      ch.on('postgres_changes', { event: '*', schema: 'public', table: t, filter: `family_id=eq.${fid}` }, soon);
     ch.subscribe((st) => setLive(st === 'SUBSCRIBED'));
     const vis = () => { if (document.visibilityState === 'visible') sync(); };
     const on = () => { setQueue(qRef.current.map((o) => (o.status === 'pending' ? { ...o, nextAt: 0 } : o))).then(sync); };
     document.addEventListener('visibilitychange', vis); addEventListener('online', on);
-    return () => { supabase.removeChannel(ch); setLive(false); document.removeEventListener('visibilitychange', vis); removeEventListener('online', on); };
+    return () => { clearTimeout(deb); supabase.removeChannel(ch); setLive(false); document.removeEventListener('visibilitychange', vis); removeEventListener('online', on); };
   }, [fid, refetch, sync, setQueue]);
 
   const mutate = useCallback(async (table: Table, kind: Op['kind'], id: string, row: Record<string, unknown> = {}) => {

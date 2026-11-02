@@ -75,7 +75,9 @@ details { margin: 8px 0; } summary { color: var(--acc); cursor: pointer; font-si
 @supports (backdrop-filter: blur(1px)) { .tabs { backdrop-filter: saturate(180%) blur(16px); -webkit-backdrop-filter: saturate(180%) blur(16px); } }
 .tabs button { flex: 1; max-width: 128px; padding: 10px 2px; font-size: 12px; font-weight: 500; color: var(--dim); background: none; border-radius: 0; min-height: 48px; }
 .tabs button.pri { background: none; color: var(--acc); font-weight: 600; }
-.tabs button.pri::before { content: ""; display: block; width: 5px; height: 5px; border-radius: 50%; background: var(--acc); margin: -4px auto 4px; animation: fs-pop .3s var(--spring); }
+.tabs button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; }
+.tab-i { display: grid; place-items: center; height: 24px; width: 44px; border-radius: 12px; transition: background .2s; }
+.tabs button.pri .tab-i { background: color-mix(in srgb, var(--acc) 15%, transparent); animation: fs-pop .3s var(--spring); }
 .code { letter-spacing: .15em; }
 .bars { display: block; width: 100%; height: 120px; margin-top: 6px; }
 .bars .b { fill: var(--acc); } .bars .dimb { fill: var(--warn); opacity: .6; }
@@ -355,3 +357,27 @@ button.pri { min-width: 44px; }
 .web-b.on { border-color: var(--acc); }
 .web-b .pl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 .wtag { font-size: 11px; font-weight: 600; color: var(--acc); }
+/* v40: ícones em botões e Mercadona × Lidl */
+.ic { display: inline-flex; vertical-align: -4px; margin-right: 6px; }
+.act .ic, .pri .ic { margin-right: 6px; }
+.cb-i { display: inline-flex; vertical-align: -3px; margin-right: 6px; color: var(--dim); }
+.cmp { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.cmp-c { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 10px; font-size: 12px; background: var(--card2, rgba(127,127,127,.08)); border: 1px solid transparent; position: relative; }
+.cmp-c small { font-weight: 400; opacity: .7; }
+.cmp-n { font-weight: 700; width: 16px; height: 16px; border-radius: 5px; display: grid; place-items: center; font-size: 10px; color: #fff; }
+.ch-mercadona .cmp-n { background: #1a8a4a; } .ch-lidl .cmp-n { background: #0050aa; }
+.cmp-s { display: inline-flex; align-items: center; gap: 2px; color: var(--dim); font-size: 11px; }
+.cmp-c.win { border-color: var(--ok, #1a8a4a); }
+.cmp-w { font-size: 10px; font-weight: 600; color: var(--ok, #1a8a4a); }
+.cesto { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 10px; font-size: 13px; }
+.ce-h { display: inline-flex; align-items: center; gap: 4px; color: var(--dim); }
+.ce-s { padding: 3px 10px; border-radius: 10px; background: var(--card2, rgba(127,127,127,.08)); border: 1px solid transparent; }
+.ce-s.win { border-color: var(--ok, #1a8a4a); }
+.ce-n { flex-basis: 100%; }
+.cmp-ed { display: grid; gap: 10px; margin: 8px 0; }
+.cmp-h { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cmp-in { gap: 6px; margin-top: 4px; }
+.cmp-in input { flex: 1; min-width: 0; } .cmp-in select { width: auto; }
+.cmp-web { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.cmp-web .chip { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; text-align: left; }
+.cmp-web .chip { min-height: 44px; }
