@@ -39,3 +39,13 @@ const CATI: Record<string, React.ReactNode> = {
 };
 /** Ícone da categoria (fallback: «Outros»). */
 export const IcCat = ({ cat, size = 16 }: { cat: string; size?: number }) => <S size={size}>{CATI[cat] ?? CATI.Outros}</S>;
+// v41: receitas.
+export const IcBook = () => <S><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z" /><path d="M4 21V5M8 7h7" /></S>;
+export const IcClock = ({ size = 14 }: { size?: number }) => <S size={size}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></S>;
+export const IcBox = ({ size = 14 }: { size?: number }) => <S size={size}><rect x="3" y="8" width="18" height="12" rx="2" /><path d="M3 12h18M8 8V5h8v3" /></S>;
+export const IcFlame = ({ size = 14 }: { size?: number }) => <S size={size}><path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-7 1.5 1 2 2 2 3 0-2 1-4 1-6z" /></S>;
+export const IcMoon = ({ size = 18 }: { size?: number }) => <S size={size}><path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z" /></S>;
+export const IcUsers = ({ size = 18 }: { size?: number }) => <S size={size}><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6" /></S>;
+export const IcBack = () => <S><path d="M15 5l-7 7 7 7" /></S>;
+export const IcMinus = () => <S><path d="M5 12h14" /></S>;
+export const IcSun = ({ size = 18 }: { size?: number }) => <S size={size}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M5 19l1.4-1.4M17.6 6.4L19 5" /></S>;

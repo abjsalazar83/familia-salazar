@@ -1,5 +1,5 @@
-import { IcCheck, IcGear, IcSwap, IcCalendar, IcCart, IcRepeat, IcChart } from './Icons';
-const APP_V = 'fs-v40';
+import { IcCheck, IcGear, IcSwap, IcCalendar, IcCart, IcRepeat, IcChart, IcBook } from './Icons';
+const APP_V = 'fs-v41';
 import { settlementEffect, payerTone, nameOf } from './lib/view';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -26,9 +26,10 @@ const Settings = lazy(() => import('./Defs'));
 // Compras em chunk próprio (com a comparação Mercadona × Lidl); pré-carregado quando o browser está livre → mudar de separador continua instantâneo.
 const loadShopping = () => import('./Shopping');
 const Shopping = lazy(loadShopping);
+const Receitas = lazy(() => import('./Receitas'));
 if (typeof window !== 'undefined') { const idle = (window as any).requestIdleCallback ?? ((f: () => void) => setTimeout(f, 1500)); idle(() => { loadShopping().catch(() => {}); }); }
 
-export type Tab = 'mes' | 'compras' | 'fixas' | 'resumo' | 'defs';
+export type Tab = 'mes' | 'compras' | 'receitas' | 'fixas' | 'resumo' | 'defs';
 type Toast = { kind: 'ok' | 'bad' | 'busy'; text: string } | null;
 export const msg = (e: unknown) => {
   const m = (e as { message?: string })?.message || String(e);
@@ -151,7 +152,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
   const [swipeDir, setSwipeDir] = useState('');
   const tabRef = useRef(tab); tabRef.current = tab;
   useEffect(() => {
-    const ORDER: Tab[] = ['mes', 'compras', 'fixas', 'resumo'];
+    const ORDER: Tab[] = ['mes', 'compras', 'receitas', 'fixas', 'resumo'];
     let x0 = 0, y0 = 0, t0 = 0, ok = false;
     const skip = (el: EventTarget | null) => { for (let n = el as HTMLElement | null; n && n !== document.body; n = n.parentElement) {
       if (n.matches?.('input,textarea,select,[contenteditable],.no-swipe')) return true;
@@ -232,12 +233,13 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
       <main ref={mainRef} key={tab} className={'screen ' + swipeDir}>
         {tab === 'mes' && <Month {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} goList={() => { setCheckout(true); setSwipeDir(''); setTab('compras'); setPanel(''); }} />}
         {tab === 'compras' && <Suspense fallback={<p className="dim">A carregar…</p>}><Shopping {...ctx} checkout={checkout} /></Suspense>}
+        {tab === 'receitas' && <Suspense fallback={<p className="dim">A carregar…</p>}><Receitas {...ctx} /></Suspense>}
         {tab === 'fixas' && <Bills {...ctx} />}
         <Suspense fallback={<p className="dim">A carregar…</p>}>{tab === 'resumo' && <History data={data} refetch={refetch} online={online} extra={extra} />}
         {tab === 'defs' && <><Settings {...ctx} theme={theme} setTheme={setTheme} /><p className="small dim" style={{ textAlign: 'center' }}>versão {APP_V}</p></>}</Suspense>
       </main>
       <nav className="tabs" aria-label="Navegação">
-        {([['mes', 'mês', <IcCalendar />], ['compras', 'compras', <IcCart />], ['fixas', 'fixas', <IcRepeat />], ['resumo', 'resumo', <IcChart />]] as [Tab, string, ReactNode][]).map(([k, l, ic]) => (
+        {([['mes', 'mês', <IcCalendar />], ['compras', 'compras', <IcCart />], ['receitas', 'receitas', <IcBook />], ['fixas', 'fixas', <IcRepeat />], ['resumo', 'resumo', <IcChart />]] as [Tab, string, ReactNode][]).map(([k, l, ic]) => (
           <button key={k} aria-current={tab === k ? 'page' : undefined} className={tab === k ? 'pri' : ''} onClick={() => { setSwipeDir(''); setTab(k); setPanel(''); setCheckout(false); }}><span className="tab-i" aria-hidden="true">{ic}</span>{l}</button>))}
       </nav>
     </>
