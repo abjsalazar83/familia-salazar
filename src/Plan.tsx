@@ -108,13 +108,13 @@ export function Savings({ data, extra, spent = 0, projected = 0, online, setting
 
 const PERN: Record<Period, string> = { mensal: '/mês', bimestral: '/2 meses', trimestral: '/3 meses', anual: '/ano' };
 const notifKey = (p: Payment, d: string) => `fs-notif-${p.id}-${d}`;
-async function notifyDue(items: ReturnType<typeof upcoming>, days: number) {
+export async function notifyDue(items: ReturnType<typeof upcoming>, days: number) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || !('serviceWorker' in navigator)) return;
   const reg = await navigator.serviceWorker.getRegistration(); if (!reg) return;
   for (const u of items) {
     if (u.days == null || u.days < 0 || u.days > days || !u.date || localStorage.getItem(notifKey(u.p, u.date))) continue;
     await reg.showNotification(u.days === 0 ? `Hoje: ${u.p.name}` : `${u.p.name} daqui a ${u.days} dia${u.days > 1 ? 's' : ''}`,
-      { body: [u.amount != null ? eur(u.amount) : null, ptDate(u.date), u.p.account].filter(Boolean).join(' · '), tag: notifKey(u.p, u.date), icon: './icon-192.png', data: { url: './?acao=contas' } });
+      { body: [u.amount != null ? eur(u.amount) : null, ptDate(u.date), u.p.account].filter(Boolean).join(' · '), tag: notifKey(u.p, u.date), icon: './icon-192.png', data: { url: './?acao=agenda' } });
     localStorage.setItem(notifKey(u.p, u.date), '1');
   }
 }

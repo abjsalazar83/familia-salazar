@@ -7,3 +7,10 @@ it('atalhos', () => {
   expect(actionTab('x')).toBeNull(); expect(actionTab(null)).toBeNull();
 });
 describe('atalho voz', () => { it('?acao=voz abre a captura por voz', () => expect(actionTab('voz')).toEqual({ tab: 'mes', panel: 'voz' })); });
+describe('atalhos v42', () => {
+  it('agenda, subscrições e viagens abrem a vista certa em «fixas»', () => {
+    expect(actionTab('agenda')).toEqual({ tab: 'fixas', panel: '', view: 'agenda' });
+    expect(actionTab('subscricoes')?.view).toBe('subs');
+    expect(actionTab('viagem')?.view).toBe('viagens');
+  });
+});

@@ -1,5 +1,5 @@
 // Atalhos do manifesto (toque longo no ícone).
-export function actionTab(a: string | null): { tab: 'mes' | 'compras' | 'fixas' | 'resumo'; panel: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz' } | null {
+export function actionTab(a: string | null): { tab: 'mes' | 'compras' | 'fixas' | 'resumo'; panel: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz'; view?: 'fixas' | 'agenda' | 'subs' | 'viagens' } | null {
   switch (a) {
     case 'despesa': return { tab: 'mes', panel: 'despesa' };
     case 'saldar': return { tab: 'mes', panel: 'saldar' };
@@ -9,6 +9,9 @@ export function actionTab(a: string | null): { tab: 'mes' | 'compras' | 'fixas' 
     case 'compras': return { tab: 'compras', panel: '' };
     case 'historico': case 'resumo': return { tab: 'resumo', panel: '' };
     case 'contas': case 'fixas': return { tab: 'fixas', panel: '' };
+    case 'agenda': return { tab: 'fixas', panel: '', view: 'agenda' };
+    case 'subscricoes': return { tab: 'fixas', panel: '', view: 'subs' };
+    case 'viagem': case 'viagens': return { tab: 'fixas', panel: '', view: 'viagens' };
     default: return null;
   }
 }

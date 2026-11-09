@@ -8,6 +8,8 @@ export type Payment = {
   kind?: 'conjunta' | 'pessoal'; split?: PaySplit; category?: string; owner_member?: string | null; last_posted?: string | null; expense_id?: string | null;
   // v16: valor muda todos os meses → fica sempre por confirmar
   variable?: boolean;
+  // v21: aparece no inventário de subscrições
+  subscription?: boolean;
 };
 const STEP: Record<Period, number> = { mensal: 1, bimestral: 2, trimestral: 3, anual: 12 };
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

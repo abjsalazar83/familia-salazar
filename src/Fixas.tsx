@@ -1,6 +1,6 @@
 // Ecrã «Fixas»: só modelos (pagamentos e receitas fixas). O que vence aparece no Mês, em «por confirmar».
-import { useState } from 'react';
-import { IcIn } from './Icons';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
+import { IcIn, IcRepeat, IcCalendar, IcCard, IcShip } from './Icons';
 import { type IncomeRule } from './lib/income';
 import { payerTone, nameOf } from './lib/view';
 import type { } from '@supabase/supabase-js';
@@ -11,7 +11,20 @@ import { hasV7 } from './lib/plan';
 import type { } from './lib/voice';
 import { monthly } from './lib/history';
 import { type Ctx, Mark } from './App';
-export function Bills({ data, mutate, state, extra, online }: Ctx) {
+const Contas = lazy(() => import('./Contas'));
+const Viagens = lazy(() => import('./Viagens'));
+export type FixView = 'fixas' | 'agenda' | 'subs' | 'viagens';
+const VIEWS: [FixView, string, ReactNode][] = [['fixas', 'Fixas', <IcRepeat />], ['agenda', 'Agenda', <IcCalendar />], ['subs', 'Subscrições', <IcCard size={20} />], ['viagens', 'Viagens', <IcShip />]];
+/** Separador «fixas»: Fixas · Agenda (próximos 60 dias) · Subscrições · Viagens. */
+export function Bills(p: Ctx & { view?: FixView; setView?: (v: FixView) => void }) {
+  const [own, setOwn] = useState<FixView>('fixas');
+  const view = p.view ?? own; const setView = p.setView ?? setOwn;
+  return <>
+    <nav className="hub" aria-label="Contas">{VIEWS.map(([k, l, ic]) => <button key={k} aria-current={view === k ? 'page' : undefined} className={view === k ? 'on' : ''} onClick={() => setView(k)}><span className="hub-i" aria-hidden="true">{ic}</span>{l}</button>)}</nav>
+    {view === 'fixas' ? <FixasList {...p} /> : <Suspense fallback={<p className="dim">A carregar…</p>}>{view === 'viagens' ? <Viagens {...p} /> : <Contas {...p} view={view} />}</Suspense>}
+  </>;
+}
+function FixasList({ data, mutate, state, extra, online }: Ctx) {
   const [edit, setEdit] = useState<string | null>(null);
   const [val, setVal] = useState('');
   const [err, setErr] = useState('');
@@ -30,7 +43,6 @@ export function Bills({ data, mutate, state, extra, online }: Ctx) {
   const toggleRule = (r: IncomeRule) => confirm(r.active ? `Parar a receita fixa «${r.name}»? As entradas antigas ficam no histórico.` : `Retomar a receita fixa «${r.name}»?`) && mutate(r.active ? 'Receita fixa parada.' : 'Receita fixa retomada.', 'income_rules', 'patch', r.id, { active: !r.active });
   return (
     <>
-      <h2>Fixas</h2>
       <div className="segc" role="radiogroup" aria-label="Mostrar">{([['tudo', 'Tudo'], ['pag', 'Pagamentos'], ['rec', 'Receitas']] as const).map(([k, l]) => <button key={k} role="radio" aria-checked={f === k} className={f === k ? 'on' : ''} onClick={() => setF(k)}>{l}</button>)}</div>
       {f !== 'rec' && <Upcoming data={data} extra={extra} mutate={mutate} />}
       {f !== 'pag' && <section className="group"><h3>receitas fixas · {rules.length}</h3>

@@ -33,6 +33,9 @@ const CATI: Record<string, React.ReactNode> = {
   Lazer: <><circle cx="12" cy="12" r="9" /><path d="M9 10h.01M15 10h.01M8.5 14.5a4.5 4.5 0 0 0 7 0" /></>,
   Saúde: <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" />,
   Escola: <path d="M2 9l10-5 10 5-10 5zM6 11v5c3 2 9 2 12 0v-5" />,
+  'Meninas & escola': <path d="M2 9l10-5 10 5-10 5zM6 11v5c3 2 9 2 12 0v-5" />,
+  'Filhos/escola': <path d="M2 9l10-5 10 5-10 5zM6 11v5c3 2 9 2 12 0v-5" />,
+  Viagem: <path d="M3 15l18-6-2 6H6zM3 15l2 4h12M9 9V5h3l2 3" />,
   Transporte: <><path d="M5 16V9l2-4h10l2 4v7zM5 12h14" /><circle cx="8" cy="18" r="1.5" /><circle cx="16" cy="18" r="1.5" /></>,
   Subscrições: <><rect x="3" y="5" width="18" height="12" rx="2" /><path d="M8 21h8M10 9l4 2-4 2z" /></>,
   Outros: <><circle cx="12" cy="12" r="9" /><path d="M8 12h.01M12 12h.01M16 12h.01" /></>,
@@ -49,3 +52,9 @@ export const IcUsers = ({ size = 18 }: { size?: number }) => <S size={size}><cir
 export const IcBack = () => <S><path d="M15 5l-7 7 7 7" /></S>;
 export const IcMinus = () => <S><path d="M5 12h14" /></S>;
 export const IcSun = ({ size = 18 }: { size?: number }) => <S size={size}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M5 19l1.4-1.4M17.6 6.4L19 5" /></S>;
+// v42: viagens, agenda, subscrições.
+export const IcShip = ({ size = 20 }: { size?: number }) => <S size={size}><path d="M3 15l18-6-2 6H6zM3 15l2 4h12M9 9V5h3l2 3" /></S>;
+export const IcBell = ({ size = 18 }: { size?: number }) => <S size={size}><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0" /></S>;
+export const IcCard = ({ size = 16 }: { size?: number }) => <S size={size}><rect x="3" y="5.5" width="18" height="13" rx="2" /><path d="M3 10h18M7 15h4" /></S>;
+export const IcPiggy = ({ size = 20 }: { size?: number }) => <S size={size}><path d="M5 11a7 6 0 0 1 12-3l3-1v4l1 1v3h-2l-2 3h-3v-2h-4v2H7l-1-3a6 6 0 0 1-1-4zM15 10h.01" /></S>;
+export const IcKids = ({ size = 20 }: { size?: number }) => <S size={size}><circle cx="8" cy="7" r="2.5" /><circle cx="16.5" cy="8.5" r="2" /><path d="M4 20v-3a4 4 0 0 1 8 0v3M13.5 20v-2.5a3 3 0 0 1 6 0V20" /></S>;

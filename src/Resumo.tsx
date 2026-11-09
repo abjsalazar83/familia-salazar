@@ -16,6 +16,9 @@ import Overview from './Overview';
 import CatBars from './CatBars';
 import { catRows, monthBars, pctChange, prevYm } from './lib/resumo';
 import { msg, displayMode, LimitsEdit, Limits, Notes, type Ctx } from './App';
+import { GoalCard, YoYCard, KidsCard } from './Compara';
+import { goalState } from './lib/goal';
+import { inNormalMonth } from './lib/trips';
 
 function Bars({ items, avg, height = 120 }: { items: { label: string; v: number; dim?: boolean }[]; avg?: number; height?: number }) {
   const max = Math.max(1, ...items.map((i) => i.v), avg ?? 0);
@@ -86,12 +89,15 @@ export default function History({ data, refetch, online, extra }: { data: Family
   const since = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 90); return d.toISOString().slice(0, 10); }, []);
   const stores = useMemo(() => byStore(data.expenses, since), [data.expenses, since]);
   const ym = todayIso().slice(0, 7);
-  const pace = useMemo(() => currentPace(ms, data.expenses, todayIso(), n), [ms, data.expenses, n]);
+  // Viagens ficam à parte: não entram no mês normal.
+  const normal = useMemo(() => data.expenses.filter(inNormalMonth), [data.expenses]);
+  const tripNow = data.expenses.filter((e) => !e.is_deleted && !inNormalMonth(e) && e.date?.startsWith(ym)).reduce((s, e) => s + e.amount_cents, 0);
+  const pace = useMemo(() => currentPace(ms, normal, todayIso(), n), [ms, normal, n]);
   const nowM = data.expenses.filter((e) => !e.is_deleted && e.type === 'partilhada' && e.date?.startsWith(ym)).reduce((s, e) => s + e.amount_cents, 0);
   const notes = data.notes;
   const rs = useReasons(data.me?.family_id);
   const [noExtra, setNoExtra] = useState(false);
-  const curT = useMemo(() => monthTotals(data.expenses, ym, noExtra), [data.expenses, ym, noExtra]);
+  const curT = useMemo(() => monthTotals(normal, ym, noExtra), [normal, ym, noExtra]);
   const curFlags = useMemo(() => monthFlags(ms, ym, curT.total, curT.cats, { noExtra }), [ms, ym, curT, noExtra]);
   const curExtras = data.expenses.filter((e) => !e.is_deleted && e.extraordinary && e.date?.startsWith(ym));
   const histFlags = useMemo(() => Object.fromEntries(ms.map((m) => [m.ym, monthFlags(ms, m.ym, Number(m.total_cents) - (noExtra ? Number(m.extra_cents) || 0 : 0), m.cats, { noExtra })])), [ms, noExtra]);
@@ -115,7 +121,9 @@ export default function History({ data, refetch, online, extra }: { data: Family
         <div className="big num">gastámos {eur(curT.total)}</div>
         <div className="sv">poupança {income ? <span className={income - curT.total >= 0 ? 'ok num' : 'bad num'}>{eur(income - curT.total)}</span> : <span className="dim">— <span className="small">(sem rendimentos)</span></span>}</div>
         <div className="dim small">ritmo → {eur(pace.total.proj)}{pace.total.avg != null && <> · normal {eur(pace.total.avg)}</>}{pace.total.ratio != null && <> · <span className={pace.total.ratio > 1.2 ? 'bad' : pace.total.ratio > 1 ? 'warn' : 'ok'}>{Math.round(pace.total.ratio * 100)}%</span></>}</div>
+        {tripNow > 0 && <div className="dim small">viagens à parte: {eur(tripNow)} (não contam no mês)</div>}
       </section>
+      <GoalCard g={goalState(ms, ym, pace.total.spent, pace.day, pace.dim, extra.settings?.savings_goal_cents ?? 60000)} />
 
       <div className="mb" role="group" aria-label="Últimos 6 meses · toca num mês">
         {bars.map((b) => <button key={b.ym} className={b.current ? 'cur' : ''} aria-pressed={sel === b.ym} aria-label={`${ymLabel(b.ym)}: ${eur(b.v)}`} onClick={() => setSel(b.ym)}>
@@ -126,6 +134,9 @@ export default function History({ data, refetch, online, extra }: { data: Family
 
       <h3>categorias · {ymLabel(sel)}{sel === ym ? ' · previsão vs mês anterior' : ' · vs mês anterior'}</h3>
       <CatBars rows={catRowsSel} empty={sel === ym ? 'ainda sem despesas partilhadas este mês' : 'sem categorias neste mês'} />
+      <YoYCard ms={ms} ym={sel} online={online} extra={extra} projected={sel === ym}
+        cats={sel === ym ? Object.fromEntries(pace.cats.map((c) => [c.cat, c.proj])) : selM?.cats ?? {}} total={sel === ym ? pace.total.proj : selM?.total_cents ?? 0} />
+      <KidsCard exps={data.expenses} ms={ms} ym={ym} />
       {selM && <div className="mdet small dim">
         <div className="kv"><span>total</span><span className="num">{eur(selM.total_cents)}</span></div>
         {selM.extra_cents > 0 && <div className="kv"><span>dos quais extraordinários</span><span className="num">{eur(selM.extra_cents)}</span></div>}

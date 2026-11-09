@@ -4,7 +4,7 @@
   "description": "",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/tess.mjs && tsc && vite build",
+    "build": "node scripts/tess.mjs && node scripts/cpi.mjs && tsc && vite build",
     "test": "vitest run",
     "preview": "vite preview"
   },

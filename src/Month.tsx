@@ -13,6 +13,7 @@ import { type Expense } from './lib/types';
 import { CloseMonth, paymentsOf } from './Plan';
 import { openFrom } from './lib/monthclose';
 import { DayOne } from './DayOne';
+import { MonthCards } from './Remind';
 import { Inbox, useAutoPost } from './Inbox';
 import { VoiceButton } from './Voice';
 import type { VoiceGuess } from './lib/voice';
@@ -38,6 +39,7 @@ export function Month(p: Ctx & PanelProps) {
     <>
       <DayOne data={data} closes={[...(data.closes ?? []), ...(p.extra?.closes ?? [])]} open={() => setPanel('fechar')} />
       <BalanceCard data={data} state={p.state} panel={panel} setPanel={setPanel} />
+      {!panel && <MonthCards data={data} extra={p.extra} go={(v) => v !== 'resumo' && p.goFix?.(v)} />}
       <Inbox data={data} payments={paymentsOf(data, p.extra)} mutate={mutate} open={panel === 'rever'} toggle={() => setPanel(panel === 'rever' ? '' : 'rever')} />
       {panel === 'saldar' && <SettleForm {...p} close={() => setPanel('')} />}
       {panel === 'despesa' && !p.editing ? <ExpenseForm key={rc ? 'rc' : vc ? 'v' + vc.text : 'n'} {...p} receipt={rc} voice={vc} close={() => { setRc(null); setVc(null); setPanel(''); }} />
