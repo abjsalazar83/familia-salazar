@@ -489,3 +489,23 @@ div.mc { display: flex; gap: 12px; align-items: center; font-size: 15px; padding
 .row2 > *, .row3 > * { min-width: 0; } input[type=date] { min-width: 0; max-width: 100%; }
 button.trip-bud { padding: 14px 16px; margin: 0; }
 button.link.inl { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+/* v43: Natal 🎄 */
+.natal { border: 1px solid color-mix(in srgb, var(--ok) 22%, transparent); }
+.natal-e { font-size: 17px; vertical-align: -1px; }
+.natal-t { font-size: 20px; font-weight: 700; }
+.natal-sp { display: flex; gap: 3px; height: 10px; margin: 10px 0 6px; border-radius: 5px; overflow: hidden; background: var(--fill); }
+.natal-sp i { display: block; min-width: 0; } .natal .sh { background: var(--ok); } .natal .pe { background: var(--warn); }
+.natal-l { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.natal-l li { display: flex; align-items: center; gap: 8px; } .natal-l .num { margin-left: auto; } .natal-l small { width: 34px; text-align: right; }
+.natal-l .dotc { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.natal-w { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+.natal-p { position: relative; background: var(--fill); border-radius: 10px; padding: 8px 10px 8px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.natal-p::before { content: ''; position: absolute; left: 5px; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: var(--pbar); }
+.natal-p b { font-size: 15px; }
+button.natal-b { display: block; width: 100%; text-align: left; background: none; color: var(--text); padding: 10px 0 2px; margin-top: 6px; min-height: 44px; }
+.natal-b .bar { height: 8px; border-radius: 4px; overflow: hidden; background: var(--fill); margin-top: 6px; }
+.natal-b .bar i { display: block; height: 100%; background: var(--ok); transform-origin: left; animation: fs-grow .6s var(--ease); } .natal-b .bar i.warn { background: var(--warn); } .natal-b .bar i.over { background: var(--bad); }
+.natal-ed { margin-top: 10px; } .natal-ed .row { gap: 8px; flex-wrap: wrap; }
+.chip.natal-c { min-height: 36px; }
+.chip.natal-c.on { background: color-mix(in srgb, var(--ok) 22%, var(--fill)) !important; box-shadow: inset 0 0 0 1.5px var(--ok); }
+.natal > p { margin: 8px 0 0; } .chips:has(> .natal-c) { padding-bottom: 6px; }

@@ -4,6 +4,7 @@ export type VoiceGuess = { total: number | null; store: string | null; category:
 
 const KW: [RegExp, string][] = [
   [/gasolina|gas[oó]leo|combust[ií]vel|\bgpl\b|portage|via verde|estacionamento|uber|bolt|comboio|metro|autocarro|oficina|pneus/i, 'Transporte'],
+  [/\bnatal\b|prendas?\b|consoada/i, 'Natal'],
   [/farm[aá]cia|m[eé]dic|consulta|dentista|hospital|an[aá]lises|[oó]culos/i, 'Saúde'],
   [/escola|livros?|material escolar|propinas|creche|atl/i, 'Meninas & escola'],
   [/netflix|spotify|subscri|dropbox|disney|hbo|icloud|google one/i, 'Subscrições'],

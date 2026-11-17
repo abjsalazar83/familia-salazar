@@ -15,6 +15,7 @@ import { THEMES, type ThemeId } from './themes';
 import { crossings, usage } from './lib/budget';
 import { actionTab } from './lib/actions';
 import { isKids, SUBCATS } from './lib/kids';
+import { NATAL, inWindow } from './lib/natal';
 import { disableLock, lockEnabled, shouldLock, unlock } from './lib/lock';
 import { uuid, type Mutate, type Op, type Table } from './lib/outbox';
 import { readStoredSession } from './lib/session';
@@ -291,6 +292,7 @@ export function ExpenseForm({ data, mutate, editing, close, receipt, voice, onSa
   } : voice ? { amount: voice.total ? centsToInput(voice.total) : '', desc: voice.store ?? '', cat: voice.category, payer: voice.payer === 'other' && other ? other.id : me.id, type: (other && !voice.personal ? 'partilhada' : 'pessoal') as Expense['type'], split: '50/50' as Expense['split_mode'], mine: '', date: todayIso(), extra: false, reason: '', subcat: '' }
   : { amount: receipt?.guess.total ? centsToInput(receipt.guess.total) : '', desc: receipt?.guess.store ?? '', cat: receipt ? receipt.guess.category ?? 'Outros' : 'Supermercado', payer: me.id, type: (other ? 'partilhada' : 'pessoal') as Expense['type'], split: '50/50' as Expense['split_mode'], mine: '', date: receipt?.guess.date ?? todayIso(), extra: false, reason: '', subcat: '' });
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const prevCat = useRef(f.cat === NATAL ? 'Outros' : f.cat);
   const cents = parseCents(f.amount);
   const mine = parseCents(f.mine || '0');
   const preview = useMemo(() => {
@@ -330,6 +332,7 @@ export function ExpenseForm({ data, mutate, editing, close, receipt, voice, onSa
       {receipt && <p className="dim small">Lido do talão: confirma valor, loja e data antes de guardar. A foto fica privada da família.</p>}
       <Field label="Quanto? (€)"><input className="num" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="0,00" autoFocus={!editing} /></Field>
       <Field label="O quê?"><input value={f.desc} maxLength={200} onChange={(e) => setF({ ...f, desc: e.target.value })} /></Field>
+      {(inWindow(todayIso()) || f.cat === NATAL) && <div className="chips" role="group" aria-label="Atalho de categoria"><button type="button" className={'chip natal-c' + (f.cat === NATAL ? ' on' : '')} aria-pressed={f.cat === NATAL} onClick={() => { if (f.cat !== NATAL) prevCat.current = f.cat; setF({ ...f, cat: f.cat === NATAL ? (prevCat.current !== NATAL ? prevCat.current : 'Outros') : NATAL }); }}>🎄 Natal{f.cat === NATAL ? ' ✓' : ''}</button></div>}
       <span className="lab">Quem pagou?</span>
       <div className="seg" role="radiogroup" aria-label="Quem pagou?">{ms.map((m) => <button key={m.id} role="radio" aria-checked={f.payer === m.id} className={f.payer === m.id ? 'pri' : ''} onClick={() => setF({ ...f, payer: m.id })}>{m.display_name}</button>)}</div>
       <span className="lab">Tipo</span>
@@ -339,7 +342,7 @@ export function ExpenseForm({ data, mutate, editing, close, receipt, voice, onSa
       </div>
       <details>
         <summary>Mais opções (categoria, data, divisão)</summary>
-        <Field label="Categoria"><select value={f.cat} onChange={(e) => setF({ ...f, cat: e.target.value })}>{CATS.map((c) => <option key={c}>{c}</option>)}</select></Field>
+        <Field label="Categoria"><select value={f.cat} onChange={(e) => setF({ ...f, cat: e.target.value })}>{CATS.map((c) => <option key={c} value={c}>{c === NATAL ? 'Natal 🎄' : c}</option>)}</select></Field>
         {isKids(f.cat) && <><span className="lab">Subcategoria</span>
           <div className="chips t44" role="radiogroup" aria-label="Subcategoria">{SUBCATS.map((k) => <button key={k} role="radio" aria-checked={f.subcat === k} className={'chip' + (f.subcat === k ? ' on' : '')} onClick={() => setF({ ...f, subcat: f.subcat === k ? '' : k })}>{k}</button>)}</div></>}
         <Field label="Data"><input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></Field>

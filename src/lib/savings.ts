@@ -1,6 +1,6 @@
 // Poupança do mês: receitas, gasto e objetivo. Lógica pura.
 export type Income = { id: string; family_id: string; member_id: string; ym: string; amount_cents: number; note: string | null; is_deleted: boolean };
-export type Settings = { family_id: string; savings_goal_cents: number; notify_days: number; cpi_manual?: number | null; cpi_manual_ym?: string | null };
+export type Settings = { family_id: string; savings_goal_cents: number; notify_days: number; cpi_manual?: number | null; cpi_manual_ym?: string | null; natal_budget_cents?: number | null; natal_budget_year?: number | null };
 
 export type SavingsState = { income: number; spent: number; projected: number; leftover: number; projectedLeftover: number; goal: number; ratio: number; status: 'ok' | 'risco' | 'sem-dados' };
 export function savings(income: number, spent: number, projected: number, goal: number): SavingsState {

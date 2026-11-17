@@ -38,6 +38,7 @@ const CATI: Record<string, React.ReactNode> = {
   Viagem: <path d="M3 15l18-6-2 6H6zM3 15l2 4h12M9 9V5h3l2 3" />,
   Transporte: <><path d="M5 16V9l2-4h10l2 4v7zM5 12h14" /><circle cx="8" cy="18" r="1.5" /><circle cx="16" cy="18" r="1.5" /></>,
   Subscrições: <><rect x="3" y="5" width="18" height="12" rx="2" /><path d="M8 21h8M10 9l4 2-4 2z" /></>,
+  Natal: <path d="M12 3l5 6h-3l4 5h-3l4 5H5l4-5H6l4-5H7zM12 19v3" />,
   Outros: <><circle cx="12" cy="12" r="9" /><path d="M8 12h.01M12 12h.01M16 12h.01" /></>,
 };
 /** Ícone da categoria (fallback: «Outros»). */
