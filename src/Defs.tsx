@@ -11,6 +11,7 @@ import { averages, byStore, currentPace, costByCategory, fixedVsVariable, monthl
 import { THEMES, type ThemeId } from './themes';
 import { crossings, usage } from './lib/budget';
 import { disableLock, enableLock, lockAvailable, lockEnabled, shouldLock, unlock } from './lib/lock';
+import { KEEP_ALIAS_KEY, keepAlias } from './lib/keep';
 import { msg, displayMode, LimitsEdit, Limits, Notes, type Ctx } from './App';
 
 function Lock() {
@@ -21,6 +22,17 @@ function Lock() {
     <li className="li"><span className="grow">pedir impressão digital ao abrir</span>{ok ? <button className="link" onClick={toggle}>{on ? 'desligar' : 'ligar'}</button> : <span className="dim small">{ok === false ? 'sem leitor neste aparelho' : '…'}</span>}</li>
     <li className="li dim small">bloqueio só deste aparelho: a sessão continua iniciada; a impressão digital fica no telemóvel e nunca sai dele. Se falhar, entra com email.</li>
   </ul>{err && <p className="err small" role="alert">{err}</p>}</>);
+}
+/** fs-v45: nome do outro (não a Ana) na «Lista» estilo Keep. Só deste aparelho. */
+function ListaAlias({ ms }: { ms: Member[] }) {
+  const other = ms.find((m) => !/^ana\b/i.test(m.display_name));
+  const [v, setV] = useState(keepAlias()); const [ok, setOk] = useState(false);
+  if (!other) return null;
+  const save = () => { localStorage.setItem(KEEP_ALIAS_KEY, v.trim() || 'Bruno'); setV(v.trim() || 'Bruno'); setOk(true); setTimeout(() => setOk(false), 1500); };
+  return (<><h3>lista (como no Keep)</h3><ul className="list">
+    <li className="li"><span className="grow">nome de {other.display_name} na lista</span><input className="amt" style={{ width: '7em' }} value={v} maxLength={20} onChange={(e) => setV(e.target.value)} onBlur={save} aria-label={`Nome de ${other.display_name} na lista`} />{ok && <span className="okt small">✓</span>}</li>
+    <li className="li dim small">por omissão «Bruno», como nas listas da Ana. Só muda o nome mostrado e copiado; os dados não mudam.</li>
+  </ul></>);
 }
 function Screen() {
   const [mode, setMode] = useState(displayMode());
@@ -58,6 +70,7 @@ export default function Settings({ data, online, theme, setTheme, mutate, run, s
       <NotifySettings data={data} extra={extra} online={online} />
       <h2 className="grp">este aparelho</h2>
       <Lock />
+      <ListaAlias ms={data.members} />
       <Screen />
       <h3>família</h3>
       <ul className="list">{data.members.map((m) => <li key={m.id} className="li"><span className="grow">{m.display_name}</span>{m.id === data.me!.id && <span className="dim">tu</span>}</li>)}

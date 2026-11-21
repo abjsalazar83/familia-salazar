@@ -16,6 +16,7 @@ import { DayOne } from './DayOne';
 import { MonthCards } from './Remind';
 import { Inbox } from './Inbox';
 import { Faltam } from './Faltam';
+import { Lista } from './Lista';
 import type { Pendente } from './lib/payments';
 import { VoiceButton } from './Voice';
 import type { VoiceGuess } from './lib/voice';
@@ -25,7 +26,7 @@ export function Month(p: Ctx & PanelProps) {
   const { data, panel, setPanel, mutate } = p; const me = data.me!.id;
   const [rc, setRc] = useState<ReceiptResult | null>(null); const [vc, setVc] = useState<VoiceGuess | null>(null); const [fx, setFx] = useState<Pendente | null>(null);
   const [showGone, setShowGone] = useState(false); const [who, setWho] = useState<'tudo' | 'eu' | 'outro'>('tudo');
-  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [open, setOpen] = useState<Record<string, boolean>>({}); const [lista, setLista] = useState(false);
     const [q, setQ] = useState(''); const [incEdit, setIncEdit] = useState<SharedIncome | null>(null);
   const ym = todayIso().slice(0, 7); const incList = monthIncomes(data.incomes ?? [], ym).filter((i) => matchIncome(i, q)); const incN = incList.length;
   const from = openFrom([...(data.closes ?? []), ...(p.extra?.closes ?? [])]); const openE = data.expenses.filter((e) => q || !from || e.date >= from);
@@ -53,6 +54,8 @@ export function Month(p: Ctx & PanelProps) {
             voice={(g) => { setRc(null); setVc(g); setFx(null); p.openExpense(null); }} fromList={data.items.some((i) => i.bought && !i.archived_at) ? p.goList : undefined} />}
       {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={mutate} online={p.online} close={() => setPanel('')} />}
       <div className="sumbar" aria-live="polite"><span className="pay-blue">Pagaste {eur(paid[me] ?? 0)}</span> · <span className="pay-pink">{otherN} pagou {eur(otherM ? paid[otherM.id] ?? 0 : 0)}</span> · <b>{!bal.debt ? 'contas certas' : bal.debt.to === me ? `${otherN} deve-te ${eur(bal.debt.cents)}` : `Deves ${eur(bal.debt.cents)} a ${otherN}`}</b></div>
+      <button className="link small lista-open" onClick={() => setLista(true)}><IcList /> Ver a lista do mês (como no Keep)</button>
+      {lista && <Lista exps={data.expenses} members={data.members} close={() => setLista(false)} />}
       {im.total > 0 && <div className="sumbar inc-bar"><span>Receitas partilhadas {eur(im.total)}</span> · <span>passa para o outro {eur(im.owed)}</span></div>}
       <div className="segc" role="radiogroup" aria-label="Quem pagou">{([['tudo', 'Tudo'], ['eu', 'Eu'], ['outro', otherN]] as const).map(([k, l]) => <button key={k} role="radio" aria-checked={who === k} className={who === k ? 'on' : ''} onClick={() => setWho(k)}>{l}</button>)}</div>
       {panel === 'despesa' && p.editing && <div ref={(el) => { if (el && el.dataset.id !== p.editing!.id) { el.dataset.id = p.editing!.id; el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }}><ExpenseForm key={p.editing.id} {...p} close={() => setPanel('')} /></div>}

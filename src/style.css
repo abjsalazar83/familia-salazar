@@ -514,3 +514,14 @@ button.natal-b { display: block; width: 100%; text-align: left; background: none
 .faltam .fl-t { min-width: 0; flex: 1; flex-wrap: nowrap; margin-top: 0; }
 .faltam .fl-row { display: flex; align-items: center; gap: 10px; text-align: left; min-height: 44px; }
 .faltam .block { display: block; }
+/* fs-v45: «Lista» estilo Keep (só consulta) */
+.lista { position: fixed; inset: 0; z-index: 60; background: var(--bg); overflow-y: auto; padding: calc(env(safe-area-inset-top) + 8px) var(--pad) calc(env(safe-area-inset-bottom) + 24px); animation: fs-pop .2s var(--spring); }
+.lista-top { display: flex; align-items: center; gap: 8px; position: sticky; top: 0; background: var(--bg); padding: 4px 0 8px; z-index: 1; }
+.lista-nav { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 17px; }
+.lista-nav button { background: none; border: 0; color: var(--acc); font-size: 26px; min-width: 44px; min-height: 44px; padding: 0; }
+.lista-nav button:disabled { color: var(--dim); opacity: .4; }
+.lista-nav b { flex: 1; text-align: center; white-space: nowrap; }
+.lista-cp { flex: none; width: auto; min-width: max-content; overflow-wrap: normal; white-space: nowrap; min-height: 36px; padding: 0 14px; display: inline-flex; align-items: center; gap: 4px; }
+.lista-note { margin: 4px 0 0; padding: 16px; background: var(--card); border-radius: var(--r); font: 16px/1.55 -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif; color: var(--text); white-space: pre-wrap; word-break: break-word; user-select: text; -webkit-user-select: text; font-variant-numeric: tabular-nums; }
+.lista-foot { margin-top: 10px; text-align: center; }
+.lista-open { display: flex; align-items: center; gap: 6px; margin: 2px auto 6px; }

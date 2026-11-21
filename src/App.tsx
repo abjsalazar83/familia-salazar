@@ -1,5 +1,5 @@
 import { IcCheck, IcGear, IcSwap, IcCalendar, IcCart, IcRepeat, IcChart, IcBook } from './Icons';
-const APP_V = 'fs-v44';
+const APP_V = 'fs-v45';
 import { settlementEffect, payerTone, nameOf } from './lib/view';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
