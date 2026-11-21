@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { natalSummary, seasonOf, showNatal, seasonBudget, inWindow } from './natal';
+import { seasonOf, seasonBudget, inWindow } from './natal';
+import { eventSummary, natalVirtual, showCard } from './events';
+// v46: o cartão de Natal é o de Eventos; estes testes garantem que o comportamento da v43 se mantém.
+const natalSummary = (xs: ReturnType<typeof E>[], today: string, budget: number | null) => { const ev = natalVirtual(today, null); return ev ? eventSummary(ev, xs, budget) : null; };
+const showNatal = (s: ReturnType<typeof natalSummary>, today: string) => !!s && showCard(s, today);
 import { CATS } from './types';
 
 const E = (x: Partial<{ category: string; amount_cents: number; date: string; is_deleted: boolean; type: 'pessoal' | 'partilhada'; paid_by: string }>) =>

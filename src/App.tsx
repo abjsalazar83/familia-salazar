@@ -1,5 +1,5 @@
 import { IcCheck, IcGear, IcSwap, IcCalendar, IcCart, IcRepeat, IcChart, IcBook } from './Icons';
-const APP_V = 'fs-v45';
+const APP_V = 'fs-v46';
 import { settlementEffect, payerTone, nameOf } from './lib/view';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -15,7 +15,8 @@ import { THEMES, type ThemeId } from './themes';
 import { crossings, usage } from './lib/budget';
 import { actionTab } from './lib/actions';
 import { isKids, SUBCATS } from './lib/kids';
-import { NATAL, inWindow } from './lib/natal';
+import { NATAL } from './lib/natal';
+import { activeChips, allEvents } from './lib/events';
 import { disableLock, lockEnabled, shouldLock, unlock } from './lib/lock';
 import { uuid, type Mutate, type Op, type Table } from './lib/outbox';
 import { readStoredSession } from './lib/session';
@@ -239,7 +240,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
         {tab === 'compras' && <Suspense fallback={<p className="dim">A carregar…</p>}><Shopping {...ctx} checkout={checkout} /></Suspense>}
         {tab === 'receitas' && <Suspense fallback={<p className="dim">A carregar…</p>}><Receitas {...ctx} /></Suspense>}
         {tab === 'fixas' && <Bills {...ctx} view={fixView} setView={setFixView} />}
-        <Suspense fallback={<p className="dim">A carregar…</p>}>{tab === 'resumo' && <History data={data} refetch={refetch} online={online} extra={extra} />}
+        <Suspense fallback={<p className="dim">A carregar…</p>}>{tab === 'resumo' && <History data={data} refetch={refetch} online={online} extra={extra} mutate={mutate} />}
         {tab === 'defs' && <><Settings {...ctx} theme={theme} setTheme={setTheme} /><p className="small dim" style={{ textAlign: 'center' }}>versão {APP_V}</p></>}</Suspense>
       </main>
       <nav className="tabs" aria-label="Navegação">
@@ -251,7 +252,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
 }
 
 export type Ctx = { data: FamilyData; run: (l: string, f: () => PromiseLike<{ error: unknown }>) => Promise<boolean>; mutate: Mutate; state: Record<string, 'pending' | 'failed'>; online: boolean; setToast: (t: Toast) => void; extra: Extra };
-const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras', recurring_bills: 'Conta', budgets: 'Limite', shared_incomes: 'Receita', income_rules: 'Receita fixa', month_closes: 'Fecho de mês', payments: 'Pagamento fixo', trips: 'Viagem', trip_items: 'Reserva' };
+const OPN: Record<Table, string> = { expenses: 'Despesa', settlements: 'Liquidação', shopping_items: 'Compras', recurring_bills: 'Conta', budgets: 'Limite', shared_incomes: 'Receita', income_rules: 'Receita fixa', month_closes: 'Fecho de mês', payments: 'Pagamento fixo', trips: 'Viagem', trip_items: 'Reserva', events: 'Evento' };
 const describeOp = (o: Op) => `${OPN[o.table]}: ${o.kind === 'create' ? 'novo' : o.kind === 'delete' ? 'apagar' : 'alterar'}${o.row.description ? ' «' + o.row.description + '»' : o.row.name ? ' «' + o.row.name + '»' : ''}`;
 export function Mark({ s }: { s?: 'pending' | 'failed' }) {
   return s ? <span className={'tag ' + (s === 'failed' ? 'err' : 'warn')}>{s === 'failed' ? 'Falhou' : 'Por sincronizar'}</span> : null;
@@ -284,7 +285,7 @@ export function showRow(id: string) {
   setTimeout(() => { const el = document.getElementById('e-' + id); if (!el) return; el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2200); }, 120);
 }
 
-export function ExpenseForm({ data, mutate, editing, close, receipt, voice, fixa, onSaved }: Ctx & { editing: Expense | null; close: () => void; receipt?: ReceiptResult | null; voice?: VoiceGuess | null; fixa?: Pendente | null; onSaved?: (id: string) => void }) {
+export function ExpenseForm({ data, mutate, extra, editing, close, receipt, voice, fixa, onSaved }: Ctx & { editing: Expense | null; close: () => void; receipt?: ReceiptResult | null; voice?: VoiceGuess | null; fixa?: Pendente | null; onSaved?: (id: string) => void }) {
   const ms = data.members; const me = data.me!;
   const other = ms.find((m) => m.id !== me.id);
   const [f, setF] = useState(() => editing ? {
@@ -294,6 +295,8 @@ export function ExpenseForm({ data, mutate, editing, close, receipt, voice, fixa
   : { amount: receipt?.guess.total ? centsToInput(receipt.guess.total) : '', desc: receipt?.guess.store ?? '', cat: receipt ? receipt.guess.category ?? 'Outros' : 'Supermercado', payer: me.id, type: (other ? 'partilhada' : 'pessoal') as Expense['type'], split: '50/50' as Expense['split_mode'], mine: '', date: receipt?.guess.date ?? todayIso(), extra: false, reason: '', subcat: '' });
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   // fixa «o outro paga 100%»: quem paga adianta, o outro deve tudo (como antes em postExpense)
+  const [ev, setEv] = useState<string | null>(editing?.event_id ?? null);
+  const chips = useMemo(() => activeChips(allEvents(data.events, todayIso(), extra?.settings), todayIso()), [data.events, extra?.settings]);
   const [full, setFull] = useState(() => !!fixa && fixa.p.kind !== 'pessoal' && fixa.p.split === 'outro100' && !!other);
   const prevCat = useRef(f.cat === NATAL ? 'Outros' : f.cat);
   const cents = parseCents(f.amount);
@@ -310,7 +313,7 @@ export function ExpenseForm({ data, mutate, editing, close, receipt, voice, fixa
     if (!cents || cents <= 0) return setErr('Indica um valor maior que zero (ex.: 12,50).');
     if (!f.desc.trim()) return setErr('Escreve o que foi.');
     if (f.type === 'partilhada' && !preview) return setErr(`A tua parte tem de estar entre 0 e ${eur(cents)}.`);
-    const row = { amount_cents: cents, description: f.desc.trim(), category: f.cat, paid_by: f.payer, type: f.type, split_mode: f.split, shares: f.type === 'partilhada' ? preview! : {}, date: f.date || todayIso(), extraordinary: f.extra, reason: f.reason.trim() || null, subcat: isKids(f.cat) && f.subcat ? f.subcat : null };
+    const row = { amount_cents: cents, description: f.desc.trim(), category: f.cat, paid_by: f.payer, type: f.type, split_mode: f.split, shares: f.type === 'partilhada' ? preview! : {}, date: f.date || todayIso(), extraordinary: f.extra, reason: f.reason.trim() || null, subcat: isKids(f.cat) && f.subcat ? f.subcat : null, ...(ev || editing?.event_id ? { event_id: ev } : {}) };
     const cr = crossings(data.budgets, data.expenses, { ...row, id: editing?.id, is_deleted: false }, editing?.id);
     if (cr.length && !confirm(cr.map((u) => `${u.level === 'over' ? 'Passa o' : 'Chega a 80% do'} limite ${budgetName(u.budget, ms)}: ${eur(u.spent)} / ${eur(u.budget.limit_cents)}`).join('\n') + '\n\nGravar mesmo assim?')) return;
     setBusy(true);
@@ -338,7 +341,14 @@ export function ExpenseForm({ data, mutate, editing, close, receipt, voice, fixa
       {receipt && <p className="dim small">Lido do talão: confirma valor, loja e data antes de guardar. A foto fica privada da família.</p>}
       <Field label="Quanto? (€)"><input className="num" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder={fixa && fixa.amount == null && fixa.hint != null ? `≈ ${centsToInput(fixa.hint)} (último)` : '0,00'} autoFocus={!editing} /></Field>
       <Field label="O quê?"><input value={f.desc} maxLength={200} onChange={(e) => setF({ ...f, desc: e.target.value })} /></Field>
-      {(inWindow(todayIso()) || f.cat === NATAL) && <div className="chips" role="group" aria-label="Atalho de categoria"><button type="button" className={'chip natal-c' + (f.cat === NATAL ? ' on' : '')} aria-pressed={f.cat === NATAL} onClick={() => { if (f.cat !== NATAL) prevCat.current = f.cat; setF({ ...f, cat: f.cat === NATAL ? (prevCat.current !== NATAL ? prevCat.current : 'Outros') : NATAL }); }}>🎄 Natal{f.cat === NATAL ? ' ✓' : ''}</button></div>}
+      {(() => { // eventos a decorrer: o Natal mexe na categoria (como na v43); os outros ligam a despesa ao evento
+        const natal = chips.some((c) => c.kind === 'natal') || f.cat === NATAL; const others = chips.filter((c) => c.kind !== 'natal');
+        const cur = ev && !others.some((c) => c.id === ev) ? (data.events ?? []).find((x) => x.id === ev) : undefined;
+        if (!natal && !others.length && !cur) return null;
+        return <div className="chips" role="group" aria-label="Evento">
+          {natal && <button type="button" className={'chip natal-c' + (f.cat === NATAL ? ' on' : '')} aria-pressed={f.cat === NATAL} onClick={() => { if (f.cat !== NATAL) prevCat.current = f.cat; setF({ ...f, cat: f.cat === NATAL ? (prevCat.current !== NATAL ? prevCat.current : 'Outros') : NATAL }); }}>🎄 Natal{f.cat === NATAL ? ' ✓' : ''}</button>}
+          {[...others, ...(cur ? [cur] : [])].map((c) => <button key={c.id} type="button" className={'chip ev-c' + (ev === c.id ? ' on' : '')} aria-pressed={ev === c.id} onClick={() => setEv(ev === c.id ? null : c.id)}>{c.emoji || '🎉'} {c.name}{ev === c.id ? ' ✓' : ''}</button>)}
+        </div>; })()}
       <span className="lab">Quem pagou?</span>
       <div className="seg" role="radiogroup" aria-label="Quem pagou?">{ms.map((m) => <button key={m.id} role="radio" aria-checked={f.payer === m.id} className={f.payer === m.id ? 'pri' : ''} onClick={() => setF({ ...f, payer: m.id })}>{m.display_name}</button>)}</div>
       <span className="lab">Tipo</span>

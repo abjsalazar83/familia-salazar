@@ -525,3 +525,9 @@ button.natal-b { display: block; width: 100%; text-align: left; background: none
 .lista-note { margin: 4px 0 0; padding: 16px; background: var(--card); border-radius: var(--r); font: 16px/1.55 -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif; color: var(--text); white-space: pre-wrap; word-break: break-word; user-select: text; -webkit-user-select: text; font-variant-numeric: tabular-nums; }
 .lista-foot { margin-top: 10px; text-align: center; }
 .lista-open { display: flex; align-items: center; gap: 6px; margin: 2px auto 6px; }
+/* fs-v46: Eventos */
+.evm-h { background: var(--fill); border: 0; border-radius: 10px; padding: 8px 12px; min-height: 44px; color: inherit; }
+.evm-b { margin-top: 6px; } .evm-f h3 { margin-top: 4px; } .evm-em .chip { min-width: 44px; font-size: 18px; }
+.evm .li .row-btn { gap: 10px; } .evm .block { display: block; }
+.chip.ev-c { min-height: 36px; }
+.chip.ev-c.on { background: color-mix(in srgb, var(--acc) 18%, var(--fill)) !important; box-shadow: inset 0 0 0 1.5px var(--acc); }

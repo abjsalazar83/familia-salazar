@@ -19,7 +19,8 @@ import { msg, displayMode, LimitsEdit, Limits, Notes, type Ctx } from './App';
 import { GoalCard, YoYCard, KidsCard } from './Compara';
 import { goalState } from './lib/goal';
 import { inNormalMonth } from './lib/trips';
-import { NatalCard } from './Natal';
+import { EventCards } from './Eventos';
+import type { Mutate } from './lib/outbox';
 
 function Bars({ items, avg, height = 120 }: { items: { label: string; v: number; dim?: boolean }[]; avg?: number; height?: number }) {
   const max = Math.max(1, ...items.map((i) => i.v), avg ?? 0);
@@ -70,7 +71,7 @@ function OffMonth({ ym, flags, extras, reason, onSave, online }: { ym: string; f
   );
 }
 
-export default function History({ data, refetch, online, extra }: { data: FamilyData; refetch: () => void; online: boolean; extra: Extra }) {
+export default function History({ data, refetch, online, extra, mutate }: { data: FamilyData; refetch: () => void; online: boolean; extra: Extra; mutate?: Mutate }) {
   const [busy, setBusy] = useState(false);
   const setOpenMonth = async (ym: string, op: boolean) => {
     if (!confirm(op ? `Reabrir ${ymLabel(ym)}? Fica em aberto (provisório).` : `Fechar ${ymLabel(ym)}?`)) return;
@@ -137,7 +138,7 @@ export default function History({ data, refetch, online, extra }: { data: Family
       <CatBars rows={catRowsSel} empty={sel === ym ? 'ainda sem despesas partilhadas este mês' : 'sem categorias neste mês'} />
       <YoYCard ms={ms} ym={sel} online={online} extra={extra} projected={sel === ym}
         cats={sel === ym ? Object.fromEntries(pace.cats.map((c) => [c.cat, c.proj])) : selM?.cats ?? {}} total={sel === ym ? pace.total.proj : selM?.total_cents ?? 0} />
-      <NatalCard exps={data.expenses} members={data.members} extra={extra} online={online} />
+      <EventCards events={data.events} exps={data.expenses} members={data.members} extra={extra} online={online} mutate={mutate} />
       <KidsCard exps={data.expenses} ms={ms} ym={ym} />
       {selM && <div className="mdet small dim">
         <div className="kv"><span>total</span><span className="num">{eur(selM.total_cents)}</span></div>
