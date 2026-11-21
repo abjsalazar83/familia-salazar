@@ -598,3 +598,4 @@ button.natal-b { display: block; width: 100%; text-align: left; background: none
 .ms-t { flex: 1; }
 .rhero .sv { font-size: 15px; font-weight: 400; color: var(--dim); margin-top: 2px; }
 .rhero .sv .num { font-weight: 600; }
+.keep-t { display: flex; flex-direction: column; align-items: center; line-height: 1.1; } .keep-t small { font-size: 12px; font-weight: 400; color: var(--dim); }

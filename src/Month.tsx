@@ -68,7 +68,7 @@ export function Month(p: Ctx & PanelProps) {
             voice={(g) => { setRc(null); setVc(g); setFx(null); p.openExpense(null); }} fromList={data.items.some((i) => i.bought && !i.archived_at) ? p.goList : undefined}
             fixas={fixasP} launch={launch} />}
       {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={mutate} online={p.online} close={() => setPanel('')} />}
-      {panel === 'lista' && <Lista exps={data.expenses} members={data.members} close={() => setPanel('')} />}
+      {panel === 'lista' && <Lista exps={data.expenses} members={data.members} incomes={data.incomes ?? []} closes={closes as never} close={() => setPanel('')} />}
       <div className="segc" role="radiogroup" aria-label="Quem pagou">{([['tudo', 'Tudo'], ['eu', 'Eu'], ['outro', otherN]] as const).map(([k, l]) => <button key={k} role="radio" aria-checked={who === k} className={who === k ? 'on' : ''} onClick={() => setWho(k)}>{l}</button>)}</div>
       {panel === 'despesa' && p.editing && <div ref={(el) => { if (el && el.dataset.id !== p.editing!.id) { el.dataset.id = p.editing!.id; el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }}><ExpenseForm key={p.editing.id} {...p} close={() => setPanel('')} /></div>}
       <input className="search" type="search" inputMode="search" aria-label="Procurar movimento" placeholder="Procurar (ex.: mercadona, 80)" value={q} onChange={(e) => setQ(e.target.value)} />

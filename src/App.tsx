@@ -1,5 +1,5 @@
 import { IcCheck, IcDots, IcSwap, IcList, IcCalendar, IcCart, IcRepeat, IcChart, IcBook } from './Icons';
-const APP_V = 'fs-v47';
+const APP_V = 'fs-v48';
 import { settlementEffect, payerTone, nameOf } from './lib/view';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -283,7 +283,7 @@ export function useBalance(d: FamilyData) {
   return useMemo(() => calculateHouseholdBalance(d.members.map((m) => m.id), d.expenses, d.settlements, d.incomes ?? []), [d]);
 }
 
-/** fs-v47 — topo do Mês: o essencial primeiro (quem deve a quem, total do mês, quem pagou) + Saldar mês e Lista.
+/** fs-v47 — topo do Mês: o essencial primeiro (quem deve a quem, total do mês, quem pagou) + Saldar mês e Keep.
  *  O «Acerto avulso» passou para o menu «⋯»; «acertos por confirmar» passou para os Avisos. */
 const MESN = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 export function BalanceCard({ data, state, panel, setPanel, closes = data.closes ?? [] }: { data: FamilyData; state: Ctx['state']; panel: PanelProps['panel']; setPanel: PanelProps['setPanel']; closes?: { ym: string; is_deleted?: boolean }[] }) {
@@ -304,7 +304,7 @@ export function BalanceCard({ data, state, panel, setPanel, closes = data.closes
       {[...data.expenses, ...data.settlements, ...(data.incomes ?? [])].some((r) => state[r.id]) && <div className="warn small">inclui alterações por sincronizar</div>}
       {data.members.length < 2 && <div className="warn small">falta a segunda pessoa · código nas definições</div>}
       {(!panel || panel === 'rever') && <div className="h-acts"><button className="pri" onClick={() => setPanel('fechar')}><span className="ic"><IcCheck /></span>Saldar mês</button>
-        <button onClick={() => setPanel('lista')}><span className="ic"><IcList /></span>Lista</button></div>}
+        <button onClick={() => setPanel('lista')}><span className="ic"><IcList /></span>Keep</button></div>}
     </section>
   );
 }

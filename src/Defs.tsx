@@ -23,15 +23,15 @@ function Lock() {
     <li className="li dim small">bloqueio só deste aparelho: a sessão continua iniciada; a impressão digital fica no telemóvel e nunca sai dele. Se falhar, entra com email.</li>
   </ul>{err && <p className="err small" role="alert">{err}</p>}</>);
 }
-/** fs-v45: nome do outro (não a Ana) na «Lista» estilo Keep. Só deste aparelho. */
+/** fs-v45: nome do outro (não a Ana) no «Keep». Só deste aparelho. */
 function ListaAlias({ ms }: { ms: Member[] }) {
   const other = ms.find((m) => !/^ana\b/i.test(m.display_name));
   const [v, setV] = useState(keepAlias()); const [ok, setOk] = useState(false);
   if (!other) return null;
   const save = () => { localStorage.setItem(KEEP_ALIAS_KEY, v.trim() || 'Bruno'); setV(v.trim() || 'Bruno'); setOk(true); setTimeout(() => setOk(false), 1500); };
-  return (<><h3>lista (como no Keep)</h3><ul className="list">
-    <li className="li"><span className="grow">nome de {other.display_name} na lista</span><input className="amt" style={{ width: '7em' }} value={v} maxLength={20} onChange={(e) => setV(e.target.value)} onBlur={save} aria-label={`Nome de ${other.display_name} na lista`} />{ok && <span className="okt small">✓</span>}</li>
-    <li className="li dim small">por omissão «Bruno», como nas listas da Ana. Só muda o nome mostrado e copiado; os dados não mudam.</li>
+  return (<><h3>Keep</h3><ul className="list">
+    <li className="li"><span className="grow">nome de {other.display_name} no Keep</span><input className="amt" style={{ width: '7em' }} value={v} maxLength={20} onChange={(e) => setV(e.target.value)} onBlur={save} aria-label={`Nome de ${other.display_name} no Keep`} />{ok && <span className="okt small">✓</span>}</li>
+    <li className="li dim small">por omissão «Bruno», como na nota Keep. Só muda o nome mostrado e copiado; os dados não mudam.</li>
   </ul></>);
 }
 function Screen() {

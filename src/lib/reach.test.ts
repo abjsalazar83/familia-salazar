@@ -1,4 +1,4 @@
-// fs-v47 — checklist de alcance: a simplificação da interface não retirou nada.
+// fs-v48 — checklist de alcance: a simplificação da interface não retirou nada.
 // Cada funcionalidade tem de continuar a ter uma entrada (botão/linha/menu) e o ecrã que abre.
 import { describe, expect, it } from 'vitest';
 import app from '../App.tsx?raw';
@@ -26,7 +26,7 @@ const CHECK: [string, string, [F, string][]][] = [
   ['Acerto avulso', 'menu «⋯» → Acerto avulso', [['menu', "go: 'saldar'"], ['app', "g === 'saldar' || g === 'fechar' || g === 'lista' || g === 'receita') { setTab('mes'); setPanel(g)"], ['month', "panel === 'saldar' && <SettleForm"]]],
   ['Acertos por confirmar', 'Avisos → Acerto por confirmar · Confirmar; e histórico de acertos', [['month', 'Acerto por confirmar'], ['month', 'confirmS(s.id)']]],
   ['Histórico de acertos', 'Mês, fim da lista', [['month', 'histórico de acertos']]],
-  ['Lista do mês (Keep)', 'topo do Mês → Lista; menu «⋯» → Lista do mês', [['app', "onClick={() => setPanel('lista')}><span className=\"ic\"><IcList /></span>Lista"], ['menu', "go: 'lista'"], ['month', "panel === 'lista' && <Lista"]]],
+  ['Keep (nota do mês)', 'topo do Mês → Keep; menu «⋯» → Keep', [['app', "onClick={() => setPanel('lista')}><span className=\"ic\"><IcList /></span>Keep"], ['menu', "go: 'lista'"], ['month', "panel === 'lista' && <Lista"]]],
   ['Por confirmar (inbox)', 'Avisos → N por confirmar', [['month', '<Inbox ']]],
   ['Lembretes (pagamentos, viagem, meio do mês)', 'Avisos', [['month', '<MonthCards ']]],
   ['Aviso do dia 1', 'Avisos', [['month', '<DayOne ']]],
@@ -50,7 +50,7 @@ const CHECK: [string, string, [F, string][]][] = [
   ['Atalhos do ícone (?acao=)', 'como antes', [['app', "searchParams.get('acao')"], ['actions', 'saldar']]],
 ];
 
-describe('fs-v47 · nada foi retirado', () => {
+describe('fs-v47+ · nada foi retirado', () => {
   it.each(CHECK)('%s → %s', (_n, _onde, provas) => {
     for (const [f, needle] of provas) expect(SRC[f], `${f}: «${needle}»`).toContain(needle);
   });
@@ -66,7 +66,7 @@ describe('fs-v47 · nada foi retirado', () => {
   it('v44 mantém-se: nenhuma fixa é lançada sozinha', () => {
     for (const s of [app, month]) expect(s).not.toMatch(/useAutoPost\(/);
   });
-  it('versão fs-v47 na app e no service worker', () => {
-    expect(app).toContain("APP_V = 'fs-v47'"); expect(sw).toContain("VERSION = 'fs-v47'");
+  it('versão igual na app e no service worker', () => {
+    const v = app.match(/APP_V = '(fs-v\d+)'/)?.[1]; expect(v).toBeTruthy(); expect(sw).toContain(`VERSION = '${v}'`);
   });
 });

@@ -7,7 +7,7 @@ export const MENU: { h: string; items: Item[] }[] = [
   { h: 'este mês', items: [
     { go: 'saldar', ic: <IcSwap />, t: 'Acerto avulso', s: 'transferência entre vocês, fora do fecho' },
     { go: 'fechar', ic: <IcCheck />, t: 'Fechar o mês', s: 'saldar tudo e começar a zeros' },
-    { go: 'lista', ic: <IcList />, t: 'Lista do mês (como no Keep)' },
+    { go: 'lista', ic: <IcList />, t: 'Keep', s: 'a nota do mês, já a metade' },
     { go: 'eventos', ic: <span>🎉</span>, t: 'Eventos', s: 'aniversários, Páscoa, Natal…' },
     { go: 'receita', ic: <span>＋</span>, t: 'Receita partilhada' },
   ] },
