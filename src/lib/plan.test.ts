@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { closeCalc, halvedLists, nextDue, upcoming, termsAt, savings, closeMessage, autoPost, type Payment } from './plan';
+import { closeCalc, halvedLists, nextDue, upcoming, termsAt, savings, closeMessage, type Payment } from './plan';
 const P = (o: Partial<Payment>): Payment => ({ id: 'x', family_id: 'f', name: 'X', amount_cents: 1000, period: 'mensal', next_date: '2026-10-08', payer: null, account: null, note: null, new_amount_cents: null, new_period: null, new_from: null, is_deleted: false, ...o });
 describe('pagamentos', () => {
   it('avança pela periodicidade e muda de preço', () => {
@@ -69,12 +69,11 @@ describe('fixos de valor variável', () => {
   it('variável fica por confirmar, sem valor, com o último lançado como sugestão', () => {
     const exps = [{ payment_id: 'agua', payment_due: '2026-10-31', is_deleted: false, amount_cents: 3606 }];
     const [x] = porLancar([{ ...base, variable: true, next_date: '2026-11-30' }], exps, '2026-11-30');
-    expect(x.amount).toBeNull(); expect(x.hint).toBe(3606); expect(autoPost(x, 'ant')).toBe(false);
+    expect(x.amount).toBeNull(); expect(x.hint).toBe(3606);
   });
-  it('sem histórico, a sugestão é o valor do modelo; fixo certo do próprio é automático', () => {
+  it('sem histórico, a sugestão é o valor do modelo; fixo certo traz o valor do modelo', () => {
     expect(porLancar([{ ...base, variable: true }], [], '2026-11-01')[0].hint).toBe(3700);
     expect(porLancar([{ ...base, amount_cents: null, name: 'SAD', variable: true }], [{ description: 'SAD', amount_cents: 4148, date: '2026-10-31', is_deleted: false }], '2026-11-01')[0].hint).toBe(4148);
     const [y] = porLancar([base], [], '2026-11-01'); expect(y.amount).toBe(3700);
-    expect(autoPost(y, 'ant')).toBe(true); expect(autoPost(y, 'ana')).toBe(false);
   });
 });

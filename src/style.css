@@ -509,3 +509,8 @@ button.natal-b { display: block; width: 100%; text-align: left; background: none
 .chip.natal-c { min-height: 36px; }
 .chip.natal-c.on { background: color-mix(in srgb, var(--ok) 22%, var(--fill)) !important; box-shadow: inset 0 0 0 1.5px var(--ok); }
 .natal > p { margin: 8px 0 0; } .chips:has(> .natal-c) { padding-bottom: 6px; }
+/* fs-v44: «Faltam lançar» (fixas só como lembrete) */
+.faltam .fl-t b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.faltam .fl-t { min-width: 0; flex: 1; flex-wrap: nowrap; margin-top: 0; }
+.faltam .fl-row { display: flex; align-items: center; gap: 10px; text-align: left; min-height: 44px; }
+.faltam .block { display: block; }

@@ -71,14 +71,39 @@ export function lastValue(p: Payment, exps: PostedExp[]): number | null {
   const same = exps.filter((e) => e && !e.is_deleted && !e.review && e.amount_cents != null && e.description?.trim().toLowerCase() === n).sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
   return same[0]?.amount_cents ?? p.amount_cents;
 }
-/** Fixos de valor certo que este dispositivo lança sozinho: valor conhecido, não variável, e quem paga sou eu. */
-export const autoPost = (x: PostItem, me: string) => !x.p.variable && x.amount != null && x.amount > 0 && x.p.owner_member === me;
 export function porLancar(ps: Payment[], exps: PostedExp[], today: string): PostItem[] {
   if (!hasV7(ps)) return [];
   const posted = new Set(exps.filter((e) => e && !e.is_deleted && e.payment_id).map((e) => e.payment_id + '|' + e.payment_due));
   return ps.flatMap((p) => duePosts(p, today, posted).map((date) => p.variable ? { p, date, amount: null, hint: lastValue(p, exps) } : { p, date, amount: termsAt(p, date).amount }))
     .sort((a, b) => a.date.localeCompare(b.date) || a.p.name.localeCompare(b.p.name));
 }
+
+/** fs-v44 — «Faltam lançar»: nada é lançado sozinho. Lembrete das fixas deste mês ainda sem despesa.
+ *  · com data: ocorrências vencidas (≤ hoje) ainda não lançadas (porLancar);
+ *  · mensais sem data: aparecem uma vez por mês até haver despesa desse mês.
+ *  Uma despesa do mesmo mês com o nome da fixa (1.ª palavra, ex.: «Luz», «Digi», «Prestação») conta como lançada. */
+export type Pendente = PostItem & { undated: boolean };
+const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const STOP = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o']);
+/** Palavra-chave do nome (1.ª com ≥ 3 letras): «Prestação Bankinter» → «prestacao». */
+export const keyword = (name: string) => norm(name).split(/[^a-z0-9]+/).find((w) => w.length >= 3 && !STOP.has(w)) ?? norm(name).trim();
+export function launchedByName(p: Payment, exps: PostedExp[], ym: string) {
+  const k = keyword(p.name); if (!k) return false;
+  return exps.some((e) => e && !e.is_deleted && !e.review && (e.date ?? '').slice(0, 7) === ym && (e.payment_id === p.id || norm(e.description ?? '').split(/[^a-z0-9]+/).includes(k)));
+}
+export function pendentes(ps: Payment[], exps: PostedExp[], today: string): Pendente[] {
+  if (!hasV7(ps)) return [];
+  const ym = today.slice(0, 7);
+  const dated: Pendente[] = porLancar(ps, exps, today).filter((x) => !launchedByName(x.p, exps, x.date.slice(0, 7))).map((x) => ({ ...x, undated: false }));
+  const undated: Pendente[] = ps.filter((p) => p && !p.is_deleted && !p.next_date && p.period === 'mensal' && !(p.last_posted && p.last_posted.slice(0, 7) >= ym) && !launchedByName(p, exps, ym))
+    .map((p) => (p.variable || p.amount_cents == null ? { p, date: today, amount: null, hint: lastValue(p, exps), undated: true } : { p, date: today, amount: termsAt(p, today).amount, undated: true }));
+  return [...dated, ...undated].sort((a, b) => Number(a.undated) - Number(b.undated) || a.date.localeCompare(b.date) || a.p.name.localeCompare(b.p.name, 'pt'));
+}
+/** Texto curto do lembrete: «Faltam lançar 3: Luz, Digi, Prestação». */
+export const pendentesText = (xs: Pendente[], max = 3) => {
+  const names = xs.map((x) => x.p.name.split(/[\s(/]/)[0]);
+  return `Faltam lançar ${xs.length}: ${names.slice(0, max).join(', ')}${names.length > max ? ` +${names.length - max}` : ''}`;
+};
 
 /** Linha de despesa a criar a partir de uma ocorrência. Conjunta → partilhada 50/50 (entra no acerto); pessoal → só do dono. */
 /** Divisão de um pagamento conjunto: metade cada, ou o outro paga tudo (ex.: despesa de saúde de um, paga pelo outro). */

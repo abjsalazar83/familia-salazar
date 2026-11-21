@@ -14,14 +14,16 @@ import { CloseMonth, paymentsOf } from './Plan';
 import { openFrom } from './lib/monthclose';
 import { DayOne } from './DayOne';
 import { MonthCards } from './Remind';
-import { Inbox, useAutoPost } from './Inbox';
+import { Inbox } from './Inbox';
+import { Faltam } from './Faltam';
+import type { Pendente } from './lib/payments';
 import { VoiceButton } from './Voice';
 import type { VoiceGuess } from './lib/voice';
 import { ReceiptButton, type ReceiptResult } from './Receipt';
 import { type Ctx, type PanelProps, BalanceCard, useBalance, SettleForm, ExpenseForm, ExpenseRow, Effect, Mark } from './App';
 export function Month(p: Ctx & PanelProps) {
   const { data, panel, setPanel, mutate } = p; const me = data.me!.id;
-  const [rc, setRc] = useState<ReceiptResult | null>(null); const [vc, setVc] = useState<VoiceGuess | null>(null);
+  const [rc, setRc] = useState<ReceiptResult | null>(null); const [vc, setVc] = useState<VoiceGuess | null>(null); const [fx, setFx] = useState<Pendente | null>(null);
   const [showGone, setShowGone] = useState(false); const [who, setWho] = useState<'tudo' | 'eu' | 'outro'>('tudo');
   const [open, setOpen] = useState<Record<string, boolean>>({});
     const [q, setQ] = useState(''); const [incEdit, setIncEdit] = useState<SharedIncome | null>(null);
@@ -33,21 +35,22 @@ export function Month(p: Ctx & PanelProps) {
   const otherM = data.members.find((m) => m.id !== me); const otherN = otherM?.display_name ?? 'Outro';
   const groups = groupByCategory(list, me); const paid = paidBy(openE.filter((e) => !from || e.date >= from)); const bal = useBalance(data);
   const cc = confirmCount(data.expenses, ym);
-  useAutoIncome(data, mutate); useAutoPost(data, paymentsOf(data, p.extra), mutate);
+  useAutoIncome(data, mutate); // fs-v44: despesas fixas nunca são lançadas sozinhas (ver «Faltam lançar»)
   const im = incomeMonth(data.incomes ?? [], ym);
   return (
     <>
       <DayOne data={data} closes={[...(data.closes ?? []), ...(p.extra?.closes ?? [])]} open={() => setPanel('fechar')} />
       <BalanceCard data={data} state={p.state} panel={panel} setPanel={setPanel} />
       {!panel && <MonthCards data={data} extra={p.extra} go={(v) => v !== 'resumo' && p.goFix?.(v)} />}
-      <Inbox data={data} payments={paymentsOf(data, p.extra)} mutate={mutate} open={panel === 'rever'} toggle={() => setPanel(panel === 'rever' ? '' : 'rever')} />
+      {!panel && <Faltam data={data} payments={paymentsOf(data, p.extra)} mutate={mutate} launch={(x) => { setRc(null); setVc(null); setFx(x); p.openExpense(null); }} />}
+      <Inbox data={data} mutate={mutate} open={panel === 'rever'} toggle={() => setPanel(panel === 'rever' ? '' : 'rever')} />
       {panel === 'saldar' && <SettleForm {...p} close={() => setPanel('')} />}
-      {panel === 'despesa' && !p.editing ? <ExpenseForm key={rc ? 'rc' : vc ? 'v' + vc.text : 'n'} {...p} receipt={rc} voice={vc} close={() => { setRc(null); setVc(null); setPanel(''); }} />
+      {panel === 'despesa' && !p.editing ? <ExpenseForm key={rc ? 'rc' : vc ? 'v' + vc.text : fx ? 'fx' + fx.p.id + fx.date : 'n'} {...p} receipt={rc} voice={vc} fixa={fx} close={() => { setRc(null); setVc(null); setFx(null); setPanel(''); }} />
         : panel === 'receita' ? <div className="card sheet"><IncomeForm key={incEdit?.id ?? 'n'} data={data} mutate={mutate} editing={incEdit} close={() => { setIncEdit(null); setPanel(''); }} toExpense={incEdit ? undefined : () => setPanel('mais')} /></div>
         : (!panel || panel === 'rever') ? <button className="act pri wide-act add-btn" onClick={() => setPanel('mais')}><span className="ic"><IcPlus /></span>Adicionar</button>
         : (panel === 'mais' || panel === 'talao' || panel === 'voz') && <AddSheet panel={panel} close={() => setPanel('')} income={() => { setIncEdit(null); setPanel('receita'); }}
-            write={() => { setRc(null); setVc(null); p.openExpense(null); }} receipt={(r) => { setRc(r); setVc(null); p.openExpense(null); }}
-            voice={(g) => { setRc(null); setVc(g); p.openExpense(null); }} fromList={data.items.some((i) => i.bought && !i.archived_at) ? p.goList : undefined} />}
+            write={() => { setRc(null); setVc(null); setFx(null); p.openExpense(null); }} receipt={(r) => { setRc(r); setVc(null); setFx(null); p.openExpense(null); }}
+            voice={(g) => { setRc(null); setVc(g); setFx(null); p.openExpense(null); }} fromList={data.items.some((i) => i.bought && !i.archived_at) ? p.goList : undefined} />}
       {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={mutate} online={p.online} close={() => setPanel('')} />}
       <div className="sumbar" aria-live="polite"><span className="pay-blue">Pagaste {eur(paid[me] ?? 0)}</span> · <span className="pay-pink">{otherN} pagou {eur(otherM ? paid[otherM.id] ?? 0 : 0)}</span> · <b>{!bal.debt ? 'contas certas' : bal.debt.to === me ? `${otherN} deve-te ${eur(bal.debt.cents)}` : `Deves ${eur(bal.debt.cents)} a ${otherN}`}</b></div>
       {im.total > 0 && <div className="sumbar inc-bar"><span>Receitas partilhadas {eur(im.total)}</span> · <span>passa para o outro {eur(im.owed)}</span></div>}

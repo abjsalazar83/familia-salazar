@@ -1,5 +1,5 @@
 import { IcCheck, IcGear, IcSwap, IcCalendar, IcCart, IcRepeat, IcChart, IcBook } from './Icons';
-const APP_V = 'fs-v42';
+const APP_V = 'fs-v44';
 import { settlementEffect, payerTone, nameOf } from './lib/view';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -21,6 +21,7 @@ import { uuid, type Mutate, type Op, type Table } from './lib/outbox';
 import { readStoredSession } from './lib/session';
 import { Month } from './Month';
 import { Bills, type FixView } from './Fixas';
+import type { Pendente } from './lib/payments';
 
 const History = lazy(() => import('./Resumo'));
 import InstallSheet, { markSaved } from './Install';
@@ -283,24 +284,27 @@ export function showRow(id: string) {
   setTimeout(() => { const el = document.getElementById('e-' + id); if (!el) return; el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2200); }, 120);
 }
 
-export function ExpenseForm({ data, mutate, editing, close, receipt, voice, onSaved }: Ctx & { editing: Expense | null; close: () => void; receipt?: ReceiptResult | null; voice?: VoiceGuess | null; onSaved?: (id: string) => void }) {
+export function ExpenseForm({ data, mutate, editing, close, receipt, voice, fixa, onSaved }: Ctx & { editing: Expense | null; close: () => void; receipt?: ReceiptResult | null; voice?: VoiceGuess | null; fixa?: Pendente | null; onSaved?: (id: string) => void }) {
   const ms = data.members; const me = data.me!;
   const other = ms.find((m) => m.id !== me.id);
   const [f, setF] = useState(() => editing ? {
     amount: centsToInput(editing.amount_cents), desc: editing.description, cat: editing.category, payer: editing.paid_by,
     type: editing.type, split: editing.split_mode, mine: centsToInput(editing.shares[me.id] ?? 0), date: editing.date, extra: !!editing.extraordinary, reason: editing.reason ?? '', subcat: editing.subcat ?? '',
-  } : voice ? { amount: voice.total ? centsToInput(voice.total) : '', desc: voice.store ?? '', cat: voice.category, payer: voice.payer === 'other' && other ? other.id : me.id, type: (other && !voice.personal ? 'partilhada' : 'pessoal') as Expense['type'], split: '50/50' as Expense['split_mode'], mine: '', date: todayIso(), extra: false, reason: '', subcat: '' }
+  } : fixa ? fixaInit(fixa, ms, me.id) : voice ? { amount: voice.total ? centsToInput(voice.total) : '', desc: voice.store ?? '', cat: voice.category, payer: voice.payer === 'other' && other ? other.id : me.id, type: (other && !voice.personal ? 'partilhada' : 'pessoal') as Expense['type'], split: '50/50' as Expense['split_mode'], mine: '', date: todayIso(), extra: false, reason: '', subcat: '' }
   : { amount: receipt?.guess.total ? centsToInput(receipt.guess.total) : '', desc: receipt?.guess.store ?? '', cat: receipt ? receipt.guess.category ?? 'Outros' : 'Supermercado', payer: me.id, type: (other ? 'partilhada' : 'pessoal') as Expense['type'], split: '50/50' as Expense['split_mode'], mine: '', date: receipt?.guess.date ?? todayIso(), extra: false, reason: '', subcat: '' });
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  // fixa «o outro paga 100%»: quem paga adianta, o outro deve tudo (como antes em postExpense)
+  const [full, setFull] = useState(() => !!fixa && fixa.p.kind !== 'pessoal' && fixa.p.split === 'outro100' && !!other);
   const prevCat = useRef(f.cat === NATAL ? 'Outros' : f.cat);
   const cents = parseCents(f.amount);
   const mine = parseCents(f.mine || '0');
   const preview = useMemo(() => {
     if (!cents || f.type !== 'partilhada' || !other) return null;
+    if (full) { const o = ms.find((m) => m.id !== f.payer); if (o) return { [f.payer]: 0, [o.id]: cents }; }
     const shares = f.split === '50/50' ? splitEqual(cents, ms.map((m) => m.id), f.payer)
       : mine !== null && mine <= cents ? { [me.id]: mine, [other.id]: cents - mine } : null;
     return shares;
-  }, [cents, f, mine, ms, me.id, other]);
+  }, [cents, f, mine, ms, me.id, other, full]);
   const save = async () => {
     setErr('');
     if (!cents || cents <= 0) return setErr('Indica um valor maior que zero (ex.: 12,50).');
@@ -316,7 +320,8 @@ export function ExpenseForm({ data, mutate, editing, close, receipt, voice, onSa
       setBusy(false); setErr('Não alteraste nada. Muda um campo ou carrega em Cancelar.'); return;
     }
     const ok = editing ? await mutate(`«${row.description}» atualizada.`, 'expenses', 'patch', id, row)
-      : await mutate('Despesa registada.', 'expenses', 'create', id, { id, family_id: me.family_id, ...row, is_deleted: false, created_at: new Date().toISOString() });
+      : await mutate(fixa ? `${fixa.p.name} lançado.` : 'Despesa registada.', 'expenses', 'create', id, { id, family_id: me.family_id, ...row, ...(fixa ? { payment_id: fixa.p.id, payment_due: fixa.date } : {}), is_deleted: false, created_at: new Date().toISOString() });
+    if (ok && !editing && fixa) await mutate('Fixa marcada como lançada.', 'payments', 'patch', fixa.p.id, { last_posted: fixa.date, expense_id: id });
     setBusy(false);
     if (!ok) return setErr('Não foi guardada. Os dados ficam no formulário; tenta de novo.');
     if (!editing) markSaved(); onSaved?.(id); close(); showRow(id);
@@ -327,10 +332,11 @@ export function ExpenseForm({ data, mutate, editing, close, receipt, voice, onSa
   };
   return (
     <div className="form">
-      <h2>{editing ? 'Editar despesa' : receipt ? 'Confirmar talão' : 'Nova despesa'}</h2>
+      <h2>{editing ? 'Editar despesa' : receipt ? 'Confirmar talão' : fixa ? 'Lançar fixa' : 'Nova despesa'}</h2>
+      {fixa && <p className="dim small">«{fixa.p.name}»: confirma o valor real que saiu da conta antes de guardar.</p>}
       {voice && <p className="dim small">Ouvi «{voice.text}». Confirma valor, descrição, quem pagou e divisão antes de guardar.</p>}
       {receipt && <p className="dim small">Lido do talão: confirma valor, loja e data antes de guardar. A foto fica privada da família.</p>}
-      <Field label="Quanto? (€)"><input className="num" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="0,00" autoFocus={!editing} /></Field>
+      <Field label="Quanto? (€)"><input className="num" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder={fixa && fixa.amount == null && fixa.hint != null ? `≈ ${centsToInput(fixa.hint)} (último)` : '0,00'} autoFocus={!editing} /></Field>
       <Field label="O quê?"><input value={f.desc} maxLength={200} onChange={(e) => setF({ ...f, desc: e.target.value })} /></Field>
       {(inWindow(todayIso()) || f.cat === NATAL) && <div className="chips" role="group" aria-label="Atalho de categoria"><button type="button" className={'chip natal-c' + (f.cat === NATAL ? ' on' : '')} aria-pressed={f.cat === NATAL} onClick={() => { if (f.cat !== NATAL) prevCat.current = f.cat; setF({ ...f, cat: f.cat === NATAL ? (prevCat.current !== NATAL ? prevCat.current : 'Outros') : NATAL }); }}>🎄 Natal{f.cat === NATAL ? ' ✓' : ''}</button></div>}
       <span className="lab">Quem pagou?</span>
@@ -351,10 +357,10 @@ export function ExpenseForm({ data, mutate, editing, close, receipt, voice, onSa
         {f.type === 'partilhada' && other && <>
           <span className="lab">Divisão</span>
           <div className="seg" role="radiogroup" aria-label="Divisão">
-            <button role="radio" aria-checked={f.split === '50/50'} className={f.split === '50/50' ? 'pri' : ''} onClick={() => setF({ ...f, split: '50/50' })}>50/50</button>
-            <button role="radio" aria-checked={f.split === 'personalizada'} className={f.split === 'personalizada' ? 'pri' : ''} onClick={() => setF({ ...f, split: 'personalizada' })}>Valores personalizados</button>
+            <button role="radio" aria-checked={f.split === '50/50'} className={f.split === '50/50' ? 'pri' : ''} onClick={() => { setFull(false); setF({ ...f, split: '50/50' }); }}>50/50</button>
+            <button role="radio" aria-checked={f.split === 'personalizada'} className={f.split === 'personalizada' ? 'pri' : ''} onClick={() => { setFull(false); setF({ ...f, split: 'personalizada' }); }}>Valores personalizados</button>
           </div>
-          {f.split === 'personalizada' && <Field label={`A parte de ${me.display_name} (€)`}><input className="num" inputMode="decimal" value={f.mine} onChange={(e) => setF({ ...f, mine: e.target.value })} /></Field>}
+          {full ? <p className="dim small">O outro paga 100% (fixa «o outro paga tudo»).</p> : f.split === 'personalizada' && <Field label={`A parte de ${me.display_name} (€)`}><input className="num" inputMode="decimal" value={f.mine} onChange={(e) => setF({ ...f, mine: e.target.value })} /></Field>}
         </>}
       </details>
       {preview && other && <p className="dim small">{me.display_name} {eur(preview[me.id])} · {other.display_name} {eur(preview[other.id])}</p>}
@@ -366,6 +372,15 @@ export function ExpenseForm({ data, mutate, editing, close, receipt, voice, onSa
       </div>
     </div>
   );
+}
+
+/** Formulário preenchido a partir de uma fixa por lançar (nada é gravado sem confirmares). */
+function fixaInit(x: Pendente, ms: Member[], me: string) {
+  const p = x.p; const other = ms.find((m) => m.id !== me);
+  const payer = p.owner_member && ms.some((m) => m.id === p.owner_member) ? p.owner_member : me;
+  const pessoal = p.kind === 'pessoal' || !other;
+  return { amount: x.amount != null ? centsToInput(x.amount) : '', desc: p.name, cat: p.category || 'Casa', payer, type: (pessoal ? 'pessoal' : 'partilhada') as Expense['type'],
+    split: (!pessoal && p.split === 'outro100' ? 'personalizada' : '50/50') as Expense['split_mode'], mine: '', date: x.date, extra: false, reason: '', subcat: '' };
 }
 
 export function SettleForm({ data, mutate, close }: Ctx & { close: () => void }) {

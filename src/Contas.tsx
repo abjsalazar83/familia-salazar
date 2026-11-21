@@ -78,7 +78,7 @@ export function Agenda({ data, extra, mutate, state }: Ctx) {
         </button>
         {edit === p.id && <QuickEdit p={p} mutate={mutate} done={() => setEdit(null)} />}
       </li>)}</ul>
-      <p className="dim small">Sem data, a app não avisa nem lança. Toca para definir; nada é preenchido sozinho.</p></>}
+      <p className="dim small">Sem data, não entra na agenda; se for mensal aparece no lembrete «Faltam lançar» do mês. Nada é lançado nem preenchido sozinho.</p></>}
   </>);
 }
 
@@ -121,7 +121,7 @@ export function Subscricoes({ data, extra, mutate, state }: Ctx) {
       <div className="acts two"><button className="act pri" onClick={create}>Criar</button><button className="act" onClick={() => setAdd(false)}>Cancelar</button></div>
       <p className="dim small">Valor, renovação e cartão ficam «por confirmar» até os indicares.</p></div>
       : <button className="act wide-act" onClick={() => setAdd(true)}><span className="ic"><IcPlus /></span>Adicionar subscrição</button>}
-    <p className="dim small">Com renovação e valor definidos, o pagamento entra no calendário e é lançado como os outros fixos.</p>
+    <p className="dim small">Com renovação e valor definidos, o pagamento entra no calendário e no lembrete «Faltam lançar», como os outros fixos.</p>
   </>);
 }
 
