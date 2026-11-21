@@ -4,6 +4,7 @@ import { newMonthReminder, reminderText } from './lib/remind';
 import type { FamilyData } from './lib/useFamily';
 import type { MonthClose } from './lib/monthclose';
 import { useBalance } from './App';
+import { IcSwap } from './Icons';
 
 /** Aviso do dia 1: «Novo mês: … — saldar tudo». Na app e, com permissão, notificação do sistema (uma por mês). Não move dinheiro. */
 export function DayOne({ data, closes, open }: { data: FamilyData; closes: MonthClose[]; open: () => void }) {
@@ -18,10 +19,10 @@ export function DayOne({ data, closes, open }: { data: FamilyData; closes: Month
       .then(() => localStorage.setItem(r.key, '1')).catch(() => {});
   }, [r?.key, perm, text]); // eslint-disable-line
   if (!r) return null;
-  return <div className="card dayone" role="status">
-    <b>{text}</b>
-    <div className="dim small">Uma só transferência com a totalidade; depois o mês começa a zeros.</div>
-    <div className="acts two"><button className="act pri" onClick={open}>Saldar mês</button>
-      {perm === 'default' && <button className="act" onClick={async () => setPerm(await Notification.requestPermission())}>Ativar avisos</button>}</div>
+  return <div className="av-row dayone" role="status">
+    <span className="av-i bad" aria-hidden="true"><IcSwap /></span>
+    <span className="grow"><b>{text}</b><span className="dim small block">Uma só transferência com a totalidade; depois o mês começa a zeros.
+      {perm === 'default' && <> <button className="link small inl" onClick={async () => setPerm(await Notification.requestPermission())}>Ativar avisos</button></>}</span></span>
+    <button className="link" onClick={open}>Saldar mês</button>
   </div>;
 }

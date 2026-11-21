@@ -3,11 +3,13 @@
 import { useMemo, useState } from 'react';
 import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
 import { supabase } from './lib/supabase';
-import { allEvents, eventSummary, showCard, validEvent, yearLabel, EMOJIS, TEMPLATES, type FamEvent } from './lib/events';
+import { activeChips, allEvents, eventSummary, showCard, validEvent, yearLabel, EMOJIS, TEMPLATES, type FamEvent } from './lib/events';
 import { uuid, type Mutate } from './lib/outbox';
 import { payerTone } from './lib/view';
 import type { Expense, Member } from './lib/types';
 import type { Extra } from './Plan';
+import type { FamilyData } from './lib/useFamily';
+import { Fold } from './Fold';
 
 export function EventCard({ ev, exps, members, extra, online, mutate }: { ev: FamEvent; exps: Expense[]; members: Member[]; extra: Extra; online: boolean; mutate?: Mutate }) {
   const [local, setLocal] = useState<number | null | undefined>(undefined);
@@ -55,21 +57,34 @@ export function EventCard({ ev, exps, members, extra, online, mutate }: { ev: Fa
   </section>;
 }
 
-/** Cartões dos eventos a decorrer (ou com despesas até 30 dias depois) + gestão dos eventos. */
-export function EventCards({ events, exps, members, extra, online, mutate, today = todayIso() }: { events?: FamEvent[]; exps: Expense[]; members: Member[]; extra: Extra; online: boolean; mutate?: Mutate; today?: string }) {
-  const evs = useMemo(() => allEvents(events, today, extra.settings), [events, today, extra.settings]);
-  const shown = evs.filter((ev) => showCard(eventSummary(ev, exps), today));
+/** Eventos com cartão no Resumo (a decorrer, ou com despesas até 30 dias depois). */
+export function shownEvents(events: FamEvent[] | undefined, exps: Expense[], today: string, st: Extra['settings']) {
+  return allEvents(events, today, st).map((ev) => eventSummary(ev, exps)).filter((s) => showCard(s, today));
+}
+/** fs-v47 — Resumo › «mais»: uma linha por evento (abre o cartão) + «Eventos · gerir». */
+export function EventFolds({ events, exps, members, extra, online, mutate, today = todayIso() }: { events?: FamEvent[]; exps: Expense[]; members: Member[]; extra: Extra; online: boolean; mutate?: Mutate; today?: string }) {
+  const shown = useMemo(() => shownEvents(events, exps, today, extra.settings), [events, exps, today, extra.settings]);
   return <>
-    {shown.map((ev) => <EventCard key={ev.id} ev={ev} exps={exps} members={members} extra={extra} online={online} mutate={mutate} />)}
+    {shown.map((s) => <Fold key={s.ev.id} ic={s.ev.emoji || '🎉'} title={s.ev.kind === 'natal' ? `Natal ${yearLabel(s.ev)}` : s.ev.name}
+      sub={s.budget != null ? `${eur(s.total)} de ${eur(s.budget)}` : `${s.count} compra${s.count === 1 ? '' : 's'}`} value={eur(s.total)}>
+      <EventCard ev={s.ev} exps={exps} members={members} extra={extra} online={online} mutate={mutate} /></Fold>)}
     {mutate && <EventsManager events={(events ?? []).filter((e) => !e.is_deleted)} exps={exps} fid={members[0]?.family_id} mutate={mutate} today={today} />}
   </>;
+}
+/** fs-v47 — Mês › Avisos: eventos a decorrer (toca → Resumo). */
+export function EventAlerts({ data, extra, go, today = todayIso() }: { data: FamilyData; extra: Extra; go: () => void; today?: string }) {
+  const xs = useMemo(() => activeChips(allEvents(data.events, today, extra.settings), today).map((ev) => eventSummary(ev, data.expenses)), [data.events, data.expenses, extra.settings, today]);
+  return <>{xs.map((s) => <button key={s.ev.id} className="av-row" onClick={go}>
+    <span className="av-i" aria-hidden="true">{s.ev.emoji || '🎉'}</span>
+    <span className="grow">{s.ev.kind === 'natal' ? 'Natal' : s.ev.name}<span className="dim small block">a decorrer · {s.budget != null ? `${eur(s.total)} de ${eur(s.budget)}` : `${eur(s.total)} · ${s.count} compra${s.count === 1 ? '' : 's'}`}</span></span>
+    <span className="fold-c" aria-hidden="true">›</span></button>)}</>;
 }
 
 type Form = { id: string | null; name: string; emoji: string; start: string; end: string; budget: string };
 const blank = (today: string): Form => ({ id: null, name: '', emoji: '🎂', start: today, end: today, budget: '' });
 
 function EventsManager({ events, exps, fid, mutate, today }: { events: FamEvent[]; exps: Expense[]; fid?: string; mutate: Mutate; today: string }) {
-  const [open, setOpen] = useState(false); const [f, setF] = useState<Form | null>(null); const [err, setErr] = useState('');
+  const [open, setOpen] = useState(() => { const o = sessionStorage.getItem('fs-open') === 'eventos'; if (o) sessionStorage.removeItem('fs-open'); return o; }); const [f, setF] = useState<Form | null>(null); const [err, setErr] = useState('');
   const list = [...events].sort((a, b) => b.start_date.localeCompare(a.start_date));
   const soon = list.filter((e) => e.end_date >= today).length;
   const save = async () => {
@@ -84,9 +99,11 @@ function EventsManager({ events, exps, fid, mutate, today }: { events: FamEvent[
     if (!confirm(`Retirar «${ev.name}»? As despesas ficam como estão (só deixam de aparecer agrupadas). Fica no histórico.`)) return;
     if (await mutate(`«${ev.name}» retirado.`, 'events', 'patch', ev.id, { is_deleted: true })) setF(null);
   };
-  return <section className="evm">
-    <button className="banner row between wide evm-h" aria-expanded={open} onClick={() => setOpen(!open)}>
-      <span><span aria-hidden="true">🎉</span> <b>Eventos</b> <span className="dim small">{list.length ? `${list.length}${soon ? ` · ${soon} por vir/a decorrer` : ''}` : 'aniversários, Páscoa, batizados…'}</span></span><span className="dim small">{open ? 'fechar' : 'gerir ›'}</span></button>
+  return <section className={'evm fold' + (open ? ' open' : '')} id="eventos">
+    <button className="fold-h evm-h" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <span className="fold-i" aria-hidden="true">🎉</span>
+      <span className="fold-t"><span className="fold-n">Eventos · gerir</span><small>{list.length ? `${list.length} evento${list.length === 1 ? '' : 's'}${soon ? ` · ${soon} por vir/a decorrer` : ''}` : 'aniversários, Páscoa, batizados…'}</small></span>
+      <span className="fold-c" aria-hidden="true">›</span></button>
     {open && <div className="card evm-b">
       {list.length > 0 && !f && <ul className="list">{list.map((ev) => { const n = eventSummary(ev, exps).count; return (
         <li key={ev.id} className="li"><button className="row-btn plain grow" onClick={() => { setErr(''); setF({ id: ev.id, name: ev.name, emoji: ev.emoji ?? '🎉', start: ev.start_date, end: ev.end_date, budget: ev.budget_cents ? centsToInput(ev.budget_cents) : '' }); }}>

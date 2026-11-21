@@ -11,15 +11,19 @@ import { averages, byStore, currentPace, costByCategory, fixedVsVariable, monthl
 import { monthFlags, monthTotals, type Flag } from './lib/anomaly';
 import { THEMES, type ThemeId } from './themes';
 import { crossings, usage } from './lib/budget';
+import { kidsMonths } from './lib/kids';
 import { disableLock, enableLock, lockAvailable, lockEnabled, shouldLock, unlock } from './lib/lock';
 import Overview from './Overview';
 import CatBars from './CatBars';
 import { catRows, monthBars, pctChange, prevYm } from './lib/resumo';
-import { msg, displayMode, LimitsEdit, Limits, Notes, type Ctx } from './App';
+import { msg, displayMode, LimitsEdit, Limits, Notes, useBalance, type Ctx } from './App';
+import { nameOf } from './lib/view';
+import { Fold, Folds } from './Fold';
 import { GoalCard, YoYCard, KidsCard } from './Compara';
 import { goalState } from './lib/goal';
+import { hasYoY } from './lib/yoy';
 import { inNormalMonth } from './lib/trips';
-import { EventCards } from './Eventos';
+import { EventFolds } from './Eventos';
 import type { Mutate } from './lib/outbox';
 
 function Bars({ items, avg, height = 120 }: { items: { label: string; v: number; dim?: boolean }[]; avg?: number; height?: number }) {
@@ -80,7 +84,7 @@ export default function History({ data, refetch, online, extra, mutate }: { data
   };
   const ms = useMemo(() => (data.months ?? []).filter((m) => m && typeof m.ym === 'string').map((m) => ({ ...m, cats: m.cats ?? {}, total_cents: Number(m.total_cents) || 0 })), [data.months]);
   const [n, setN] = useState(12);
-  const [sel, setSel] = useState(todayIso().slice(0, 7)); const [mq, setMq] = useState(''); const [mais, setMais] = useState(false);
+  const [sel, setSel] = useState(todayIso().slice(0, 7)); const [mq, setMq] = useState('');
   const [open, setOpen] = useState<string | null>(null);
   const a = useMemo(() => averages(ms, n), [ms, n]);
   const cats = useMemo(() => costByCategory(ms, n), [ms, n]);
@@ -97,7 +101,7 @@ export default function History({ data, refetch, online, extra, mutate }: { data
   const pace = useMemo(() => currentPace(ms, normal, todayIso(), n), [ms, normal, n]);
   const nowM = data.expenses.filter((e) => !e.is_deleted && e.type === 'partilhada' && e.date?.startsWith(ym)).reduce((s, e) => s + e.amount_cents, 0);
   const notes = data.notes;
-  const rs = useReasons(data.me?.family_id);
+  const rs = useReasons(data.me?.family_id); const bal = useBalance(data);
   const [noExtra, setNoExtra] = useState(false);
   const curT = useMemo(() => monthTotals(normal, ym, noExtra), [normal, ym, noExtra]);
   const curFlags = useMemo(() => monthFlags(ms, ym, curT.total, curT.cats, { noExtra }), [ms, ym, curT, noExtra]);
@@ -114,6 +118,9 @@ export default function History({ data, refetch, online, extra, mutate }: { data
   const catRowsSel = sel === ym
     ? catRows(curT.cats, null).map((r) => { const c = projBy[r.cat]; const pv = prevCats ? prevCats[r.cat] ?? 0 : null; return { cat: r.cat, v: r.v, pct: pctChange(c?.proj ?? r.v, pv), flag: !!c?.flag, sub: c ? `→ ${eur(c.proj)} ao ritmo atual${pv ? ` · ${ymLabel(prevYm(sel))} ${eur(pv)}` : ''}` : undefined }; })
     : catRows(selM?.cats ?? {}, prevCats).map((r) => ({ cat: r.cat, v: r.v, pct: r.pct, sub: r.prev ? `${ymLabel(prevYm(sel))} ${eur(r.prev)}` : undefined }));
+  const goal = goalState(ms, ym, pace.total.spent, pace.day, pace.dim, extra.settings?.savings_goal_cents ?? 60000);
+  const kidsK = kidsMonths(data.expenses, ym, 1, ms); const kidsNow = kidsK[kidsK.length - 1]?.total ?? 0;
+  const lim = usage(data.budgets, data.expenses, ym); const limOver = lim.filter((x) => x.level === 'over').length;
   const qq = mq.trim().toLowerCase();
   const monthsList = [...ms].sort((x, y) => y.ym.localeCompare(x.ym)).filter((m) => !qq || [m.ym, ymLabel(m.ym), rs.r[m.ym] ?? '', m.note ?? '', ...Object.keys(m.cats)].join(' ').toLowerCase().includes(qq)).slice(0, qq ? 999 : n);
   return (
@@ -121,37 +128,47 @@ export default function History({ data, refetch, online, extra, mutate }: { data
       <section className="rhero fade" aria-label="Este mês">
         <div className="dim small">{ymLabel(ym)} · dia {pace.day}/{pace.dim}</div>
         <div className="big num">gastámos {eur(curT.total)}</div>
-        <div className="sv">poupança {income ? <span className={income - curT.total >= 0 ? 'ok num' : 'bad num'}>{eur(income - curT.total)}</span> : <span className="dim">— <span className="small">(sem rendimentos)</span></span>}</div>
+        <div className="sv">{bal.debt ? <span className="r-debt">{bal.debt.to === data.me?.id ? `${nameOf(data.members, bal.debt.from)} deve-te ${eur(bal.debt.cents)}` : `Deves ${eur(bal.debt.cents)} a ${nameOf(data.members, bal.debt.to)}`} · </span> : <span className="r-debt">contas certas · </span>}poupança {income ? <span className={income - curT.total >= 0 ? 'ok num' : 'bad num'}>{eur(income - curT.total)}</span> : <span className="dim">— <span className="small">(sem rendimentos)</span></span>}</div>
         <div className="dim small">ritmo → {eur(pace.total.proj)}{pace.total.avg != null && <> · normal {eur(pace.total.avg)}</>}{pace.total.ratio != null && <> · <span className={pace.total.ratio > 1.2 ? 'bad' : pace.total.ratio > 1 ? 'warn' : 'ok'}>{Math.round(pace.total.ratio * 100)}%</span></>}</div>
         {tripNow > 0 && <div className="dim small">viagens à parte: {eur(tripNow)} (não contam no mês)</div>}
       </section>
-      <GoalCard g={goalState(ms, ym, pace.total.spent, pace.day, pace.dim, extra.settings?.savings_goal_cents ?? 60000)} />
-
-      <div className="mb" role="group" aria-label="Últimos 6 meses · toca num mês">
-        {bars.map((b) => <button key={b.ym} className={b.current ? 'cur' : ''} aria-pressed={sel === b.ym} aria-label={`${ymLabel(b.ym)}: ${eur(b.v)}`} onClick={() => setSel(b.ym)}>
-          <span className="bv">{eurRound(b.v).replace(/\s?€/, '')}</span>
-          <span className="bb" style={{ height: (b.v / maxB) * 110 + 'px' }} />
-          <span className="bl">{ymLabel(b.ym).split(' ')[0].slice(0, 3)}</span></button>)}
-      </div>
-
-      <h3>categorias · {ymLabel(sel)}{sel === ym ? ' · previsão vs mês anterior' : ' · vs mês anterior'}</h3>
-      <CatBars rows={catRowsSel} empty={sel === ym ? 'ainda sem despesas partilhadas este mês' : 'sem categorias neste mês'} />
-      <YoYCard ms={ms} ym={sel} online={online} extra={extra} projected={sel === ym}
-        cats={sel === ym ? Object.fromEntries(pace.cats.map((c) => [c.cat, c.proj])) : selM?.cats ?? {}} total={sel === ym ? pace.total.proj : selM?.total_cents ?? 0} />
-      <EventCards events={data.events} exps={data.expenses} members={data.members} extra={extra} online={online} mutate={mutate} />
-      <KidsCard exps={data.expenses} ms={ms} ym={ym} />
-      {selM && <div className="mdet small dim">
-        <div className="kv"><span>total</span><span className="num">{eur(selM.total_cents)}</span></div>
-        {selM.extra_cents > 0 && <div className="kv"><span>dos quais extraordinários</span><span className="num">{eur(selM.extra_cents)}</span></div>}
-        {selM.note && <p>{selM.note}</p>}{rs.r[selM.ym] && <p>razão: {rs.r[selM.ym]}</p>}
-        {histFlags[selM.ym]?.map((f) => <div key={f.what} className="warn">▲ {flagText(f)}</div>)}
-      </div>}
-
       <OffMonth ym={ym} flags={curFlags} extras={curExtras} reason={rs.r[ym] ?? ''} online={online} onSave={(t) => rs.save(ym, t, data.me?.id)} />
-      <Limits data={data} />
 
-      <details className="mais" open={mais} onToggle={(e) => setMais((e.target as HTMLDetailsElement).open)}>
-        <summary><span>Mais <span className="dim small" style={{ fontWeight: 400 }}>· poupança, dicas, meses</span></span></summary>
+      <h3 className="fold-sec">o essencial</h3>
+      <Folds label="O essencial">
+        <Fold ic="🎯" title={`Meta ${eurRound(goal.goal)}/mês`} sub={goal.status === 'ok' ? 'no caminho' : goal.status === 'acima' ? 'acima do habitual' : goal.status === 'atencao' ? 'atenção' : 'sem dados'}
+          value={<span className={goal.status === 'ok' ? 'ok' : goal.status === 'acima' ? 'bad' : goal.status === 'atencao' ? 'warn' : 'dim'}>{goal.status === 'ok' ? '✓' : goal.status === 'sem-dados' ? '—' : '!'}</span>}>
+          <GoalCard g={goal} /></Fold>
+        <Fold ic="📊" title={`Categorias · ${catRowsSel.length}`} sub={catRowsSel.slice(0, 2).map((r) => `${r.cat} ${eurRound(r.v)}`).join(' · ') || 'ainda sem despesas'}>
+          <div className="mb" role="group" aria-label="Últimos 6 meses · toca num mês">
+            {bars.map((b) => <button key={b.ym} className={b.current ? 'cur' : ''} aria-pressed={sel === b.ym} aria-label={`${ymLabel(b.ym)}: ${eur(b.v)}`} onClick={() => setSel(b.ym)}>
+              <span className="bv">{eurRound(b.v).replace(/\s?€/, '')}</span>
+              <span className="bb" style={{ height: (b.v / maxB) * 110 + 'px' }} />
+              <span className="bl">{ymLabel(b.ym).split(' ')[0].slice(0, 3)}</span></button>)}
+          </div>
+          <h3>categorias · {ymLabel(sel)}{sel === ym ? ' · previsão vs mês anterior' : ' · vs mês anterior'}</h3>
+          <CatBars rows={catRowsSel} empty={sel === ym ? 'ainda sem despesas partilhadas este mês' : 'sem categorias neste mês'} />
+          {selM && <div className="mdet small dim">
+            <div className="kv"><span>total</span><span className="num">{eur(selM.total_cents)}</span></div>
+            {selM.extra_cents > 0 && <div className="kv"><span>dos quais extraordinários</span><span className="num">{eur(selM.extra_cents)}</span></div>}
+            {selM.note && <p>{selM.note}</p>}{rs.r[selM.ym] && <p>razão: {rs.r[selM.ym]}</p>}
+            {histFlags[selM.ym]?.map((f) => <div key={f.what} className="warn">▲ {flagText(f)}</div>)}
+          </div>}
+        </Fold>
+      </Folds>
+
+      <h3 className="fold-sec">mais (toca para abrir)</h3>
+      <Folds label="Mais">
+        <EventFolds events={data.events} exps={data.expenses} members={data.members} extra={extra} online={online} mutate={mutate} />
+        <Fold ic="🎓" title="Meninas & escola" sub="escola, roupa, atividades · 6 meses" value={kidsNow ? eur(kidsNow) : '—'}>
+          <KidsCard exps={data.expenses} ms={ms} ym={ym} /></Fold>
+        {hasYoY(ms, sel) && <Fold ic="📈" title="vs ano passado (+ inflação)" sub={ymLabel(sel)}>
+          <YoYCard ms={ms} ym={sel} online={online} extra={extra} projected={sel === ym}
+            cats={sel === ym ? Object.fromEntries(pace.cats.map((c) => [c.cat, c.proj])) : selM?.cats ?? {}} total={sel === ym ? pace.total.proj : selM?.total_cents ?? 0} />
+</Fold>}
+        {lim.length > 0 && <Fold ic="🛒" title="Limites do mês" sub={`${lim.length} limite${lim.length === 1 ? '' : 's'}`} value={limOver ? <span className="bad">{limOver} passou</span> : <span className="ok">ok</span>}>
+          <Limits data={data} /></Fold>}
+        <Fold ic="🗓️" title={`Histórico · ${n} meses`} sub="poupança, quanto custa, onde poupar, lojas, notas, meses">
         <div className="mais-b">
           <Savings data={data} extra={extra} online={online} spent={pace.total.spent} projected={pace.total.proj} />
           <Overview data={data} extra={extra} />
@@ -188,7 +205,8 @@ export default function History({ data, refetch, online, extra, mutate }: { data
             </li>))}</ul>
           {!monthsList.length && <p className="dim small">nenhum mês encontrado</p>}
         </div>
-      </details>
+        </Fold>
+      </Folds>
     </>
   );
 }

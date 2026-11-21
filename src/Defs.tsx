@@ -63,12 +63,13 @@ export default function Settings({ data, online, theme, setTheme, mutate, run, s
   return (
     <>
       <h2 className="grp">preferências · limites, avisos, poupança e tema</h2>
-      <h3>tema</h3>
+      <h3 id="defs-tema">tema</h3>
       <ThemePicker theme={theme} setTheme={setTheme} />
+      <div id="defs-limites" className="anchor" />
       <LimitsEdit data={data} mutate={mutate} run={run} state={state} online={online} setToast={setToast} extra={extra} />
       <Savings data={data} extra={extra} online={online} settings />
-      <NotifySettings data={data} extra={extra} online={online} />
-      <h2 className="grp">este aparelho</h2>
+      <div id="defs-avisos" className="anchor"><NotifySettings data={data} extra={extra} online={online} /></div>
+      <h2 className="grp" id="defs-aparelho">este aparelho · família e sessão</h2>
       <Lock />
       <ListaAlias ms={data.members} />
       <Screen />

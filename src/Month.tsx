@@ -1,11 +1,10 @@
 // Ecrã «Mês»: saldo, aviso «por confirmar», adicionar e uma só lista de movimentos (− despesas, + receitas).
-import { useState } from 'react';
-import { IcList, IcPen, IcPlus, IcCat } from './Icons';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { IcList, IcPen, IcCat, IcSwap } from './Icons';
 import { IncomeForm, IncomeRows, useAutoIncome } from './Incomes';
 import type { SharedIncome } from './lib/income';
-import { incomeMonth } from './lib/income';
 import { matchExpense, matchIncome, monthIncomes } from './lib/search';
-import { payerTone, groupByCategory, paidBy, nameOf } from './lib/view';
+import { payerTone, groupByCategory, nameOf } from './lib/view';
 import { confirmCount } from './lib/anomaly';
 import type { } from '@supabase/supabase-js';
 import { eur, ptDate, todayIso } from './lib/money';
@@ -17,46 +16,59 @@ import { MonthCards } from './Remind';
 import { Inbox } from './Inbox';
 import { Faltam } from './Faltam';
 import { Lista } from './Lista';
-import type { Pendente } from './lib/payments';
+import { pendentes, type Pendente } from './lib/payments';
+import { EventAlerts } from './Eventos';
 import { VoiceButton } from './Voice';
 import type { VoiceGuess } from './lib/voice';
 import { ReceiptButton, type ReceiptResult } from './Receipt';
-import { type Ctx, type PanelProps, BalanceCard, useBalance, SettleForm, ExpenseForm, ExpenseRow, Effect, Mark } from './App';
+import { type Ctx, type PanelProps, BalanceCard, SettleForm, ExpenseForm, ExpenseRow, Effect, Mark } from './App';
 export function Month(p: Ctx & PanelProps) {
   const { data, panel, setPanel, mutate } = p; const me = data.me!.id;
   const [rc, setRc] = useState<ReceiptResult | null>(null); const [vc, setVc] = useState<VoiceGuess | null>(null); const [fx, setFx] = useState<Pendente | null>(null);
   const [showGone, setShowGone] = useState(false); const [who, setWho] = useState<'tudo' | 'eu' | 'outro'>('tudo');
-  const [open, setOpen] = useState<Record<string, boolean>>({}); const [lista, setLista] = useState(false);
-    const [q, setQ] = useState(''); const [incEdit, setIncEdit] = useState<SharedIncome | null>(null);
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [q, setQ] = useState(''); const [incEdit, setIncEdit] = useState<SharedIncome | null>(null);
   const ym = todayIso().slice(0, 7); const incList = monthIncomes(data.incomes ?? [], ym).filter((i) => matchIncome(i, q)); const incN = incList.length;
   const from = openFrom([...(data.closes ?? []), ...(p.extra?.closes ?? [])]); const openE = data.expenses.filter((e) => q || !from || e.date >= from);
   const list = openE.filter((e) => (showGone || !e.is_deleted) && (who === 'tudo' || (who === 'eu' ? e.paid_by === me : e.paid_by !== me)) && matchExpense(e, q));
   const confirmS = (id: string) => mutate('Liquidação confirmada.', 'settlements', 'patch', id, { confirmed: true, confirmed_at: new Date().toISOString() });
   const confirmE = (e: Expense) => mutate(e.confirmed_by ? 'Confirmação retirada.' : 'Valor confirmado.', 'expenses', 'patch', e.id, e.confirmed_by ? { confirmed_by: null, confirmed_at: null } : { confirmed_by: me, confirmed_at: new Date().toISOString() });
   const otherM = data.members.find((m) => m.id !== me); const otherN = otherM?.display_name ?? 'Outro';
-  const groups = groupByCategory(list, me); const paid = paidBy(openE.filter((e) => !from || e.date >= from)); const bal = useBalance(data);
+  const groups = groupByCategory(list, me);
   const cc = confirmCount(data.expenses, ym);
+  const closes = [...(data.closes ?? []), ...(p.extra?.closes ?? [])]; const pays = paymentsOf(data, p.extra);
+  const pendS = data.settlements.filter((s) => !s.is_deleted && !s.confirmed);
+  const fixasP = useMemo(() => pendentes(pays, data.expenses as never, todayIso()), [pays, data.expenses]);
+  const launch = (x: Pendente) => { setRc(null); setVc(null); setFx(x); p.openExpense(null); };
+  // fs-v47: um só sítio para avisos; o título conta o que está lá dentro
+  const avRef = useRef<HTMLElement>(null); const [avN, setAvN] = useState(0);
+  useLayoutEffect(() => { const n = avRef.current?.children.length ?? 0; if (n !== avN) setAvN(n); });
   useAutoIncome(data, mutate); // fs-v44: despesas fixas nunca são lançadas sozinhas (ver «Faltam lançar»)
-  const im = incomeMonth(data.incomes ?? [], ym);
   return (
     <>
-      <DayOne data={data} closes={[...(data.closes ?? []), ...(p.extra?.closes ?? [])]} open={() => setPanel('fechar')} />
-      <BalanceCard data={data} state={p.state} panel={panel} setPanel={setPanel} />
-      {!panel && <MonthCards data={data} extra={p.extra} go={(v) => v !== 'resumo' && p.goFix?.(v)} />}
-      {!panel && <Faltam data={data} payments={paymentsOf(data, p.extra)} mutate={mutate} launch={(x) => { setRc(null); setVc(null); setFx(x); p.openExpense(null); }} />}
-      <Inbox data={data} mutate={mutate} open={panel === 'rever'} toggle={() => setPanel(panel === 'rever' ? '' : 'rever')} />
+      <BalanceCard data={data} state={p.state} panel={panel} setPanel={setPanel} closes={closes} />
+      <h3 className={'av-h' + (avN ? '' : ' hide')}>avisos · {avN}</h3>
+      <section className="avisos" ref={avRef} aria-label="Avisos">
+        <DayOne data={data} closes={closes} open={() => setPanel('fechar')} />
+        {pendS.map((s) => <div key={s.id} className="av-row" role="status">
+          <span className="av-i bad" aria-hidden="true"><IcSwap /></span>
+          <span className="grow">Acerto por confirmar · {eur(s.amount_cents)}<span className="dim small block">{nameOf(data.members, s.from_member)} → {nameOf(data.members, s.to_member)} · {ptDate(s.date)}{s.method ? ' · ' + s.method : ''} · ainda não conta</span></span>
+          {s.to_member === me ? <button className="link" onClick={() => confirmS(s.id)}>Confirmar</button> : <span className="dim small">à espera</span>}
+        </div>)}
+        {!panel && <Faltam data={data} payments={pays} mutate={mutate} launch={launch} />}
+        <Inbox data={data} mutate={mutate} open={panel === 'rever'} toggle={() => setPanel(panel === 'rever' ? '' : 'rever')} />
+        {!panel && <MonthCards data={data} extra={p.extra} go={(v) => (v === 'resumo' ? p.goResumo?.() : p.goFix?.(v))} />}
+        {!panel && <EventAlerts data={data} extra={p.extra} go={() => p.goResumo?.()} />}
+      </section>
       {panel === 'saldar' && <SettleForm {...p} close={() => setPanel('')} />}
       {panel === 'despesa' && !p.editing ? <ExpenseForm key={rc ? 'rc' : vc ? 'v' + vc.text : fx ? 'fx' + fx.p.id + fx.date : 'n'} {...p} receipt={rc} voice={vc} fixa={fx} close={() => { setRc(null); setVc(null); setFx(null); setPanel(''); }} />
         : panel === 'receita' ? <div className="card sheet"><IncomeForm key={incEdit?.id ?? 'n'} data={data} mutate={mutate} editing={incEdit} close={() => { setIncEdit(null); setPanel(''); }} toExpense={incEdit ? undefined : () => setPanel('mais')} /></div>
-        : (!panel || panel === 'rever') ? <button className="act pri wide-act add-btn" onClick={() => setPanel('mais')}><span className="ic"><IcPlus /></span>Adicionar</button>
         : (panel === 'mais' || panel === 'talao' || panel === 'voz') && <AddSheet panel={panel} close={() => setPanel('')} income={() => { setIncEdit(null); setPanel('receita'); }}
             write={() => { setRc(null); setVc(null); setFx(null); p.openExpense(null); }} receipt={(r) => { setRc(r); setVc(null); setFx(null); p.openExpense(null); }}
-            voice={(g) => { setRc(null); setVc(g); setFx(null); p.openExpense(null); }} fromList={data.items.some((i) => i.bought && !i.archived_at) ? p.goList : undefined} />}
+            voice={(g) => { setRc(null); setVc(g); setFx(null); p.openExpense(null); }} fromList={data.items.some((i) => i.bought && !i.archived_at) ? p.goList : undefined}
+            fixas={fixasP} launch={launch} />}
       {panel === 'fechar' && <CloseMonth data={data} extra={p.extra} mutate={mutate} online={p.online} close={() => setPanel('')} />}
-      <div className="sumbar" aria-live="polite"><span className="pay-blue">Pagaste {eur(paid[me] ?? 0)}</span> · <span className="pay-pink">{otherN} pagou {eur(otherM ? paid[otherM.id] ?? 0 : 0)}</span> · <b>{!bal.debt ? 'contas certas' : bal.debt.to === me ? `${otherN} deve-te ${eur(bal.debt.cents)}` : `Deves ${eur(bal.debt.cents)} a ${otherN}`}</b></div>
-      <button className="link small lista-open" onClick={() => setLista(true)}><IcList /> Ver a lista do mês (como no Keep)</button>
-      {lista && <Lista exps={data.expenses} members={data.members} close={() => setLista(false)} />}
-      {im.total > 0 && <div className="sumbar inc-bar"><span>Receitas partilhadas {eur(im.total)}</span> · <span>passa para o outro {eur(im.owed)}</span></div>}
+      {panel === 'lista' && <Lista exps={data.expenses} members={data.members} close={() => setPanel('')} />}
       <div className="segc" role="radiogroup" aria-label="Quem pagou">{([['tudo', 'Tudo'], ['eu', 'Eu'], ['outro', otherN]] as const).map(([k, l]) => <button key={k} role="radio" aria-checked={who === k} className={who === k ? 'on' : ''} onClick={() => setWho(k)}>{l}</button>)}</div>
       {panel === 'despesa' && p.editing && <div ref={(el) => { if (el && el.dataset.id !== p.editing!.id) { el.dataset.id = p.editing!.id; el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }}><ExpenseForm key={p.editing.id} {...p} close={() => setPanel('')} /></div>}
       <input className="search" type="search" inputMode="search" aria-label="Procurar movimento" placeholder="Procurar (ex.: mercadona, 80)" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -86,21 +98,25 @@ export function Month(p: Ctx & PanelProps) {
   );
 }
 
-/** Folha «Adicionar» única para movimentos: − despesa (Escrever, Voz, Talão, Da lista) ou + receita partilhada. Nada é gravado sem confirmares. */
-function AddSheet({ panel, close, write, receipt, voice, fromList, income }: { panel: string; close: () => void; write: () => void; receipt: (r: ReceiptResult) => void; voice: (g: VoiceGuess) => void; fromList?: () => void; income: () => void }) {
-  return (
-    <div className="card sheet add-sheet" role="dialog" aria-label="Adicionar movimento">
+/** Folha «Adicionar» (fs-v47: folha de baixo, aberta pelo «+»): − despesa (Escrever, Voz, Talão, Da lista) ou + receita; e as fixas por lançar como atalho. Nada é gravado sem confirmares. */
+function AddSheet({ panel, close, write, receipt, voice, fromList, income, fixas, launch }: { panel: string; close: () => void; write: () => void; receipt: (r: ReceiptResult) => void; voice: (g: VoiceGuess) => void; fromList?: () => void; income: () => void; fixas: Pendente[]; launch: (x: Pendente) => void }) {
+  return (<>
+    <div className="scrim" onClick={close} aria-hidden="true" />
+    <div className="bsheet add-sheet" role="dialog" aria-label="Adicionar movimento">
+      <div className="grab" aria-hidden="true" />
       <div className="row between"><h2>Adicionar</h2><button className="link" onClick={close}>cancelar</button></div>
       <div className="segc sign" role="radiogroup" aria-label="Despesa ou receita">
         <button role="radio" aria-checked className="on">− Despesa</button>
         <button role="radio" aria-checked={false} onClick={income}>+ Receita</button></div>
-      <div className="acts two">
+      <div className="acts two big4">
         <button className="act" onClick={write}><span className="ic"><IcPen /></span>Escrever</button>
         <VoiceButton key={panel} auto={panel === 'voz'} big={panel === 'voz'} aria="Despesa por voz" onResult={voice} />
         <ReceiptButton big={panel === 'talao'} onResult={receipt} />
         <button className="act" disabled={!fromList} onClick={fromList} title={fromList ? '' : 'sem nada no carrinho'}><span className="ic"><IcList /></span>Da lista</button>
       </div>
       {!fromList && <p className="dim small">«Da lista» fica ativo quando houver artigos no carrinho das compras.</p>}
+      {fixas.length > 0 && <><h4 className="as-h">ou lança uma fixa que já saiu da conta</h4>
+        <div className="fxs no-swipe">{fixas.map((x) => <button key={x.p.id + x.date} className="chip" onClick={() => launch(x)}>{x.p.name}{x.amount != null ? ' ' + eur(x.amount) : ''}</button>)}</div></>}
     </div>
-  );
+  </>);
 }

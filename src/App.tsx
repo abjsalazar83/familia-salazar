@@ -1,5 +1,5 @@
-import { IcCheck, IcGear, IcSwap, IcCalendar, IcCart, IcRepeat, IcChart, IcBook } from './Icons';
-const APP_V = 'fs-v46';
+import { IcCheck, IcDots, IcSwap, IcList, IcCalendar, IcCart, IcRepeat, IcChart, IcBook } from './Icons';
+const APP_V = 'fs-v47';
 import { settlementEffect, payerTone, nameOf } from './lib/view';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -9,6 +9,7 @@ import { calculateHouseholdBalance, splitEqual } from './lib/balance';
 import { eur, parseCents, centsToInput, ptDate, todayIso } from './lib/money';
 import { CATS, type Budget, type Expense, type Member } from './lib/types';
 import { useExtra, Money, type Extra } from './Plan';
+import { openFrom } from './lib/monthclose';
 import type { VoiceGuess } from './lib/voice';
 import { uploadReceipt, openReceipt, type ReceiptResult } from './Receipt';
 import { THEMES, type ThemeId } from './themes';
@@ -22,6 +23,11 @@ import { uuid, type Mutate, type Op, type Table } from './lib/outbox';
 import { readStoredSession } from './lib/session';
 import { Month } from './Month';
 import { Bills, type FixView } from './Fixas';
+import { Fab, MenuSheet, type MenuGo } from './Menu';
+import { monthTotals } from './lib/anomaly';
+import { inNormalMonth } from './lib/trips';
+import { paidBy } from './lib/view';
+import { incomeMonth } from './lib/income';
 import type { Pendente } from './lib/payments';
 
 const History = lazy(() => import('./Resumo'));
@@ -174,7 +180,7 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
     el.addEventListener('touchstart', start, { passive: true }); el.addEventListener('touchend', end, { passive: true });
     return () => { el.removeEventListener('touchstart', start); el.removeEventListener('touchend', end); };
   }, []);
-  const [panel, setPanel] = useState<'' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz' | 'mais' | 'receita' | 'rever'>(''); const [checkout, setCheckout] = useState(false);
+  const [panel, setPanel] = useState<Panel>(''); const [menu, setMenu] = useState(false); const [scrollTo, setScrollTo] = useState(''); const [checkout, setCheckout] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [toast, setToast] = useState<Toast>(null);
   const [locked, unlocked] = useLock();
@@ -206,6 +212,8 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
     setTimeout(() => setToast((t) => (t?.kind === 'ok' ? null : t)), 3000);
     return true;
   };
+  // depois de mudar de ecrã pelo menu: rolar até à secção (Definições/Resumo carregam em diferido)
+  useEffect(() => { if (!scrollTo) return; let k = 0; const t = setInterval(() => { const el = document.getElementById(scrollTo); if (el || ++k > 20) { clearInterval(t); el?.scrollIntoView({ block: 'start', behavior: 'smooth' }); setScrollTo(''); } }, 80); return () => clearInterval(t); }, [scrollTo, tab]);
   const pendingN = queue.filter((o) => o.status === 'pending').length;
   const failed = queue.filter((o) => o.status === 'failed');
   const nFailed = useRef(0);
@@ -220,13 +228,22 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
 
   const ctx = { data, run, mutate, state, online, setToast, extra };
   const openExpense = (e: Expense | null) => { setEditing(e); setPanel('despesa'); };
+  // fs-v47: menu «⋯» → cada opção rara abre o sítio onde sempre esteve (nada foi retirado)
+  const goMenu = (g: MenuGo) => {
+    setSwipeDir(''); setEditing(null); setCheckout(false);
+    if (g === 'saldar' || g === 'fechar' || g === 'lista' || g === 'receita') { setTab('mes'); setPanel(g); return; }
+    setPanel('');
+    if (g === 'eventos') { sessionStorage.setItem('fs-open', 'eventos'); setTab('resumo'); setScrollTo('eventos'); return; }
+    setTab('defs'); setScrollTo(g === 'defs' ? '' : g);
+  };
+  const fabOn = tab !== 'compras' && !menu && !['despesa', 'receita', 'saldar', 'fechar', 'mais', 'talao', 'voz', 'lista'].includes(panel);
   return (
     <>
       <div className="sync dim" aria-live="polite">
         {status === 'error' ? <span className="err">Falha a sincronizar: {msg(error)}</span>
           : <>{online ? 'Sincronizado' : 'Última sincronização'} {syncedAt?.toLocaleString('pt-PT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{live && online ? ' · tempo real' : ''}</>}
         {pendingN > 0 && <span className="warn"> · {pendingN} por sincronizar{syncing && online ? ' (a enviar…)' : ''}</span>}
-        <button className={'gear' + (tab === 'defs' ? ' on' : '')} aria-label="Definições" onClick={() => { setTab('defs'); setPanel(''); }}><IcGear /></button>
+        <button className={'gear' + (tab === 'defs' || menu ? ' on' : '')} aria-label="Menu" aria-haspopup="dialog" onClick={() => setMenu(true)}><IcDots /></button>
       </div>
       <InstallSheet editing={!!panel} />
       {toast && <div className={'banner ' + toast.kind} role={toast.kind === 'bad' ? 'alert' : 'status'}>{toast.text}{toast.kind === 'bad' && <button className="x" aria-label="Fechar" onClick={() => setToast(null)}>×</button>}</div>}
@@ -236,13 +253,15 @@ function Main({ session, online, theme, setTheme }: { session: Session; online: 
           <button onClick={() => retry(o.opId)} disabled={!online}>Tentar de novo</button>
           <button className="danger" onClick={() => { if (confirm('Descartar esta alteração local? Não foi guardada no servidor.')) discard(o.opId); }}>Descartar</button></li>)}</ul></div>}
       <main ref={mainRef} key={tab} className={'screen ' + swipeDir}>
-        {tab === 'mes' && <Month {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} goList={() => { setCheckout(true); setSwipeDir(''); setTab('compras'); setPanel(''); }} goFix={(v) => { setSwipeDir(''); setFixView(v); setTab('fixas'); setPanel(''); }} />}
+        {tab === 'mes' && <Month {...ctx} panel={panel} setPanel={setPanel} editing={editing} openExpense={openExpense} goList={() => { setCheckout(true); setSwipeDir(''); setTab('compras'); setPanel(''); }} goFix={(v) => { setSwipeDir(''); setFixView(v); setTab('fixas'); setPanel(''); }} goResumo={() => { setSwipeDir(''); setTab('resumo'); setPanel(''); }} />}
         {tab === 'compras' && <Suspense fallback={<p className="dim">A carregar…</p>}><Shopping {...ctx} checkout={checkout} /></Suspense>}
         {tab === 'receitas' && <Suspense fallback={<p className="dim">A carregar…</p>}><Receitas {...ctx} /></Suspense>}
         {tab === 'fixas' && <Bills {...ctx} view={fixView} setView={setFixView} />}
         <Suspense fallback={<p className="dim">A carregar…</p>}>{tab === 'resumo' && <History data={data} refetch={refetch} online={online} extra={extra} mutate={mutate} />}
         {tab === 'defs' && <><Settings {...ctx} theme={theme} setTheme={setTheme} /><p className="small dim" style={{ textAlign: 'center' }}>versão {APP_V}</p></>}</Suspense>
       </main>
+      {fabOn && <Fab onClick={() => { setSwipeDir(''); setEditing(null); setTab('mes'); setPanel('mais'); }} />}
+      {menu && <MenuSheet close={() => setMenu(false)} go={goMenu} />}
       <nav className="tabs" aria-label="Navegação">
         {([['mes', 'mês', <IcCalendar />], ['compras', 'compras', <IcCart />], ['receitas', 'receitas', <IcBook />], ['fixas', 'fixas', <IcRepeat />], ['resumo', 'resumo', <IcChart />]] as [Tab, string, ReactNode][]).map(([k, l, ic]) => (
           <button key={k} aria-current={tab === k ? 'page' : undefined} className={tab === k ? 'pri' : ''} onClick={() => { setSwipeDir(''); if (k === 'fixas' && tab === 'fixas') setFixView('fixas'); setTab(k); setPanel(''); setCheckout(false); }}><span className="tab-i" aria-hidden="true">{ic}</span>{l}</button>))}
@@ -257,26 +276,36 @@ const describeOp = (o: Op) => `${OPN[o.table]}: ${o.kind === 'create' ? 'novo' :
 export function Mark({ s }: { s?: 'pending' | 'failed' }) {
   return s ? <span className={'tag ' + (s === 'failed' ? 'err' : 'warn')}>{s === 'failed' ? 'Falhou' : 'Por sincronizar'}</span> : null;
 }
-export type PanelProps = { panel: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz' | 'mais' | 'receita' | 'rever'; setPanel: (p: '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz' | 'mais' | 'receita' | 'rever') => void; goList: () => void; goFix?: (v: FixView) => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
+export type Panel = '' | 'despesa' | 'saldar' | 'fechar' | 'talao' | 'voz' | 'mais' | 'receita' | 'rever' | 'lista';
+export type PanelProps = { panel: Panel; setPanel: (p: Panel) => void; goResumo?: () => void; goList: () => void; goFix?: (v: FixView) => void; editing: Expense | null; openExpense: (e: Expense | null) => void };
 
 export function useBalance(d: FamilyData) {
   return useMemo(() => calculateHouseholdBalance(d.members.map((m) => m.id), d.expenses, d.settlements, d.incomes ?? []), [d]);
 }
 
-export function BalanceCard({ data, state, panel, setPanel }: { data: FamilyData; state: Ctx['state']; panel: PanelProps['panel']; setPanel: PanelProps['setPanel'] }) {
+/** fs-v47 — topo do Mês: o essencial primeiro (quem deve a quem, total do mês, quem pagou) + Saldar mês e Lista.
+ *  O «Acerto avulso» passou para o menu «⋯»; «acertos por confirmar» passou para os Avisos. */
+const MESN = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+export function BalanceCard({ data, state, panel, setPanel, closes = data.closes ?? [] }: { data: FamilyData; state: Ctx['state']; panel: PanelProps['panel']; setPanel: PanelProps['setPanel']; closes?: { ym: string; is_deleted?: boolean }[] }) {
   const b = useBalance(data); const me = data.me?.id;
   const tone = b.debt ? payerTone(data.members, b.debt.to) : '';
-  const pendS = data.settlements.filter((s) => !s.is_deleted && !s.confirmed).length;
+  const ym = todayIso().slice(0, 7);
+  const spent = useMemo(() => monthTotals(data.expenses.filter(inNormalMonth), ym).total, [data.expenses, ym]);
+  const from = openFrom(closes as never);
+  const paid = paidBy(data.expenses.filter((e) => !from || e.date >= from));
+  const other = data.members.find((m) => m.id !== me);
+  const im = incomeMonth(data.incomes ?? [], ym);
   return (
-    <div className={'card balance' + (tone ? ' pay-' + tone : '')} aria-live="polite">
-      <div><Money c={b.debt?.cents ?? 0} className="big" /></div>
-      <div className="dim">{b.debt ? (b.debt.to === me ? `${nameOf(data.members, b.debt.from)} deve-te` : `deves a ${nameOf(data.members, b.debt.to)}`) : 'contas certas'}</div>
+    <section className={'hero47' + (tone ? ' pay-' + tone : '')} aria-live="polite" aria-label="Saldo">
+      <div className="dim small">{MESN[Number(ym.slice(5, 7)) - 1]} · gastámos {eur(spent)} (partilhadas)</div>
+      <div className="h-who">{b.debt ? (b.debt.to === me ? <>{nameOf(data.members, b.debt.from)} deve-te <Money c={b.debt.cents} /></> : <>Deves <Money c={b.debt.cents} /> a {nameOf(data.members, b.debt.to)}</>) : 'Contas certas'}</div>
+      <div className="h-sub"><span className="pay-blue">pagaste {eur(me ? paid[me] ?? 0 : 0)}</span> · <span className="pay-pink">{other?.display_name ?? 'Outro'} pagou {eur(other ? paid[other.id] ?? 0 : 0)}</span></div>
+      {im.total > 0 && <div className="h-sub">receitas partilhadas {eur(im.total)} · passa para o outro {eur(im.owed)}</div>}
       {[...data.expenses, ...data.settlements, ...(data.incomes ?? [])].some((r) => state[r.id]) && <div className="warn small">inclui alterações por sincronizar</div>}
-      {pendS > 0 && <div className="warn small">{pendS} acerto{pendS > 1 ? 's' : ''} por confirmar (não conta{pendS > 1 ? 'm' : ''})</div>}
       {data.members.length < 2 && <div className="warn small">falta a segunda pessoa · código nas definições</div>}
-      {!panel && <div className="acts two"><button className="act pri" onClick={() => setPanel('fechar')}><span className="ic"><IcCheck /></span>Saldar mês</button>
-        <button className="act" onClick={() => setPanel('saldar')}><span className="ic"><IcSwap /></span>Acerto avulso</button></div>}
-    </div>
+      {(!panel || panel === 'rever') && <div className="h-acts"><button className="pri" onClick={() => setPanel('fechar')}><span className="ic"><IcCheck /></span>Saldar mês</button>
+        <button onClick={() => setPanel('lista')}><span className="ic"><IcList /></span>Lista</button></div>}
+    </section>
   );
 }
 
